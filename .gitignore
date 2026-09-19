@@ -52,3 +52,9 @@ tmp/
 
 # Local upload staging (moves to Supabase storage in step 11)
 backend/uploads/
+
+# TS incremental build info
+*.tsbuildinfo
+
+# Local placement debug render (npm run preview)
+backend/placement-preview.html
