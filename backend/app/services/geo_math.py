@@ -182,6 +182,33 @@ def polygon_area_sq_meters(points: Sequence[Point]) -> float:
     return abs(twice_area) / 2.0
 
 
+def polygon_distance_meters(a: Sequence[Point], b: Sequence[Point]) -> float:
+    """Shortest distance between two building footprints, 0 if they touch or overlap.
+
+    Centroid-to-centroid badly overstates how far apart large buildings are: on
+    this campus two adjacent halls measure over 100 m centre to centre while their
+    walls are perhaps 30 m apart. "Buildings within 50 m" means the buildings, not
+    their middles.
+
+    Checks each ring's vertices against the other ring's edges, which is exact
+    unless two edges cross without either's vertices being nearest — impossible
+    for disjoint polygons, and the overlapping case already returns 0.
+    """
+    ring_a, ring_b = _open_ring(a), _open_ring(b)
+    if len(ring_a) < 3 or len(ring_b) < 3:
+        return float("inf")
+
+    if any(point_in_polygon(p, ring_b) for p in ring_a) or any(
+        point_in_polygon(p, ring_a) for p in ring_b
+    ):
+        return 0.0
+
+    return min(
+        min(distance_point_to_polygon_meters(p, ring_b) for p in ring_a),
+        min(distance_point_to_polygon_meters(p, ring_a) for p in ring_b),
+    )
+
+
 def polygon_area_2d(points: Sequence[Point]) -> float:
     """Shoelace area of a polygon already in a flat 2D (metre) frame."""
     ring = _open_ring(points)

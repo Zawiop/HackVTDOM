@@ -16,6 +16,9 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from ..config import get_settings
+from ..services import cache, geo_math
+from ..services import footprint as footprint_service
 from ..services.geo import VALID_RADII_M, haversine_meters, within_radius
 from ..models import Generation
 from ..store import GenerationStore, NotFoundError, PersistenceError, get_store
@@ -25,6 +28,56 @@ router = APIRouter(prefix="/api", tags=["propagate"])
 
 # A pre-baked row this close to a supplied footprint centroid is that building.
 NEIGHBOUR_MATCH_M = 20.0
+
+
+def _cached_footprint(lat: float, lng: float):
+    """The building polygon at this coordinate, from step 02's cache only.
+
+    Deliberately never calls Overpass: propagate must stay an instant reveal
+    during judging (10-propagate.md), and this runs once per candidate row.
+    Returns None when the coordinate was never cached, and the caller falls
+    back to centroid distance.
+    """
+    settings = get_settings()
+    entry = cache.get(lat, lng, settings.overpass_neighbor_radius_meters)
+    if entry is None:
+        return None
+    elements, _ = entry
+    query_point = (lng, lat)
+    parsed = [
+        c for c in (footprint_service.to_candidate(e, query_point) for e in elements)
+        if c is not None
+    ]
+    parsed.sort(key=lambda c: c.distanceMeters)
+    within = [c for c in parsed if c.distanceMeters <= settings.overpass_match_radius_meters]
+    selected, _, _ = footprint_service.resolve(within, query_point)
+    return selected
+
+
+def _ring(candidate) -> list:
+    return [(p[0], p[1]) for p in candidate.geometry]
+
+
+def _rows_within(source, rows: list[dict], radius_m: float) -> list[dict]:
+    """Filter by distance between buildings, falling back to between centroids.
+
+    Both footprints have to be cached for the edge measurement; if either is
+    missing the pair is judged on centroids, which is the old behaviour.
+    """
+    source_fp = _cached_footprint(source.lat, source.lng)
+    kept: list[dict] = []
+    for row in rows:
+        row_fp = _cached_footprint(row["lat"], row["lng"]) if source_fp else None
+        if source_fp is not None and row_fp is not None:
+            distance = geo_math.polygon_distance_meters(_ring(source_fp), _ring(row_fp))
+            measured = "edge"
+        else:
+            distance = haversine_meters(source.lat, source.lng, row["lat"], row["lng"])
+            measured = "centroid"
+        if distance <= radius_m:
+            kept.append({**row, "distance_m": round(distance, 2), "distance_from": measured})
+    kept.sort(key=lambda r: r["distance_m"])
+    return kept
 
 
 class NeighbourFootprint(BaseModel):
@@ -109,9 +162,11 @@ def propagate(
     if source.world_state is not None:
         candidates = [c for c in candidates if c.get("world_state") == source.world_state]
 
-    revealed_dicts = within_radius(origin, candidates, req.radius_meters)
-    revealed = [Generation(**{k: v for k, v in r.items() if k != "distance_m"})
-                for r in revealed_dicts]
+    revealed_dicts = _rows_within(source, candidates, req.radius_meters)
+    revealed = [
+        Generation(**{k: v for k, v in r.items() if k not in ("distance_m", "distance_from")})
+        for r in revealed_dicts
+    ]
 
     # Neighbours supplied by step 02 that have no pre-baked row within match distance.
     pending: list[dict] = []

@@ -1,18 +1,27 @@
 /* Single stylesheet for the whole app.
-   Structural only — step 13's skin restyles everything by overriding the
-   --sn-* tokens below rather than touching individual rules. */
+   Structural rules stay token-driven; step 13's skin lives in the tokens below
+   and in the two blocks marked SKIN, so nothing else has to know about it. */
+
+@import url("https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&display=swap");
 
 :root {
-  --sn-bg: #0f1210;
-  --sn-panel: #171c19;
-  --sn-border: #2b332d;
-  --sn-text: #dfe6e0;
-  --sn-muted: #93a096;
-  --sn-accent: #6ee7a0;
-  --sn-warn: #e6a028;
-  --sn-danger: #e2544a;
-  --sn-verified: #7fb6ff;
+  /* SKIN (13-ui-skin.md). Warm dark, amber and moss — the tone the World State
+     prompts describe, so the chrome and the generated imagery agree. */
+  --sn-bg: #14120f;
+  --sn-panel: #1f1c17;
+  --sn-border: #35302a;
+  --sn-text: #e8e2d4;
+  --sn-muted: #9a9284;
+  --sn-accent: #c98a3c;          /* amber: interactive + confident */
+  --sn-moss: #5c7a4f;
+  --sn-warn: #d9603b;            /* auto-low ring and badge (file 12) */
+  --sn-danger: #d9603b;
+  --sn-verified: #5c7a4f;        /* manually-verified: a human closed the loop */
   --sn-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* Headings only. Everything else stays plainly legible — the 3D scene and the
+     before/after imagery are the centrepiece, the chrome should stay out of them. */
+  --sn-display: "Chakra Petch", ui-sans-serif, system-ui, sans-serif;
+  --sn-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   color-scheme: dark;
 }
 
@@ -23,8 +32,20 @@ html, body, #root { height: 100%; margin: 0; }
 body {
   background: var(--sn-bg);
   color: var(--sn-text);
-  font-family: var(--sn-mono);
+  font-family: var(--sn-body);
   font-size: 13px;
+}
+
+/* SKIN: amber, desaturated basemap without swapping tile providers.
+   12-map-render.md ruled out a MapTiler key; filtering the canvas costs no new
+   API surface and no new rate-limit risk. */
+.maplibregl-canvas {
+  filter: sepia(0.35) saturate(0.7) contrast(1.05) brightness(0.9);
+}
+
+h1, h2, h3, .panel h2, .panel h3 {
+  font-family: var(--sn-display);
+  letter-spacing: 0.06em;
 }
 
 .app-shell { position: relative; height: 100%; width: 100%; }
@@ -93,6 +114,7 @@ input[type="range"] { flex: 1; accent-color: var(--sn-accent); padding: 0; }
 .muted { color: var(--sn-muted); }
 .error-text, .entry-error { color: var(--sn-danger); }
 .warn-text { color: var(--sn-warn); }
+.verified-text { color: var(--sn-verified); }
 
 .error-banner {
   position: absolute; top: 0; left: 0; right: 0; z-index: 50;
@@ -106,10 +128,20 @@ input[type="range"] { flex: 1; accent-color: var(--sn-accent); padding: 0; }
   display: inline-block; padding: 1px 6px; border-radius: 3px;
   font-size: 10px; letter-spacing: 0.06em; border: 1px solid transparent;
 }
-.badge.auto-high { color: var(--sn-accent); border-color: #2c5c3e; }
-.badge.auto-low { color: var(--sn-warn); border-color: #5c4a20; }
-/* A human-corrected row reads as neither "trusted" nor "flagged". */
-.badge.manually-verified { color: var(--sn-verified); border-color: #2c4468; }
+/* SKIN: three states that must read differently at a glance (13-ui-skin.md).
+   auto-high stays quiet; the other two are the ones a judge should notice. */
+.badge.auto-high { color: var(--sn-muted); border-color: var(--sn-border); }
+.badge.auto-low {
+  color: var(--sn-warn);
+  border-color: color-mix(in srgb, var(--sn-warn) 55%, transparent);
+  background: color-mix(in srgb, var(--sn-warn) 12%, transparent);
+}
+/* A human closed the loop — visually distinct from "the algorithm was right". */
+.badge.manually-verified {
+  color: var(--sn-verified);
+  border-color: color-mix(in srgb, var(--sn-verified) 60%, transparent);
+  background: color-mix(in srgb, var(--sn-verified) 14%, transparent);
+}
 
 /* --- before/after thumbnails --- */
 

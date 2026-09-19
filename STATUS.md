@@ -135,6 +135,42 @@ is 600 s and held in memory, so after a quota failure a provider is skipped for 
 minutes; restart the server to clear it or you will see `skipped: true` and think
 the new key failed.
 
+## Step 13 skin, and four fixes from the error audit
+
+**Skin (13-ui-skin.md).** Warm dark panels on amber and moss, Chakra Petch on
+headings only, body left as a plain system sans so the 3D scene and the
+before/after imagery stay the centrepiece. The basemap is toned with a CSS filter
+on `.maplibregl-canvas` rather than a new tile provider — 12-map-render.md ruled
+out a MapTiler key and this costs no new API surface. Confidence language is in
+one component, `panel/ConfidenceBadge.tsx`: `auto-high` stays quiet, `auto-low`
+reads "needs review" in the warn colour and rings the mesh, `manually-verified`
+reads "✓ verified" in moss. That third state is the human-in-the-loop beat, and
+it has to be visible to be demonstrable.
+
+**Propagate now measures building-to-building, not centre-to-centre.** This is
+why the 50 m and 100 m tiers were empty: Burruss to Pamplin is 105 m between
+centroids but well under 50 m between walls, and "buildings within 50 m" plainly
+means the buildings. Polygons come from the step 02 cache only — never a live
+Overpass call, because Propagate has to stay an instant reveal — and any pair
+whose footprints are not both cached falls back to centroid distance. All three
+tiers now populate: 50 m reveals Pamplin, 100 m adds Williams, 250 m adds
+McBryde, and Lane Stadium stays out at every radius.
+
+**The footprint cache is written through to disk** (`.cache/footprints.json`,
+gitignored, atomic replace, corrupt file ignored rather than fatal). An in-memory
+cache died with the server, which meant the pre-baked buildings vanished exactly
+when Overpass was least likely to answer — every public endpoint was down at some
+point during this build.
+
+**Step 12 reads `scaleXYZ`.** Step 08 emits a non-uniform fit when proportions
+disagree past 30% and the renderer was throwing it away. Uniform is still the
+default; the stretch is used only when offered. `achievableIou` was also being
+computed and then silently dropped by the response model — it is in the contract now.
+
+**`/api/generate/status` no longer overclaims.** It reported kontext `ready`
+while the provider was out of quota, because it only reflects this server's
+cooldown table. It now says so, in the payload.
+
 ## Step 08 — how the transform is computed
 
 `POST /api/placement` takes the chosen polygon and neighbours from step 02 plus

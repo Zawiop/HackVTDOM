@@ -113,7 +113,14 @@ async def _file_or_url(body: dict, file_field: str, url_field: str) -> bytes | N
 
 @router.get("/generate/status")
 async def generation_status():
-    """Which providers are usable right now, and the live state of each HF Space."""
+    """This server's cooldown table, plus the live stage of each HF Space.
+
+    `ready` means only "not on local cooldown, so the next request will try it" —
+    NOT that the provider has quota. A provider that has never been called in this
+    process reads `ready` even when its quota is exhausted, and a Space can report
+    RUNNING while refusing every call because the account's ZeroGPU minutes are
+    spent. Treat a failed attempt, not this endpoint, as the truth.
+    """
     spaces = [config.KONTEXT_SPACE, config.TRIPOSR_SPACE, config.SF3D_SPACE]
     stages = await asyncio.gather(*(asyncio.to_thread(hf_space_stage, s) for s in spaces))
     return {
@@ -121,6 +128,10 @@ async def generation_status():
         "meshProviders": {p: cooling_down(p) or "ready" for p in config.MESH_PROVIDERS},
         "spaces": dict(zip(spaces, stages)),
         "placeholderUrl": f"{config.PUBLIC_BASE_URL}/assets/placeholder.glb",
+        "meaning": (
+            "'ready' = not on this server's cooldown list. It is not a quota check: "
+            "only an actual attempt tells you whether a provider will answer."
+        ),
     }
 
 

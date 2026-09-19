@@ -150,6 +150,7 @@ async def bake(entry: dict, live: bool) -> GenerationCreate:
         placement=Placement(
             rotationDegrees=computed["rotationDegrees"],
             scale=computed["scale"],
+            scaleXYZ=computed["scaleXYZ"],
             position=computed["position"],
             confidence=computed["confidence"],
             scoredRotationCandidates=[

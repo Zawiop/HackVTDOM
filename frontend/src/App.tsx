@@ -160,8 +160,10 @@ export default function App() {
 
         <h3>legend</h3>
         <p className="hint">
-          <span className="warn-text">amber ring</span> = flagged by the placement
-          checker, shown rather than hidden. Click it to open the correction controls.
+          <span className="warn-text">ringed</span> = flagged by the placement checker,
+          shown rather than hidden. Click it to open the correction controls.
+          <br />
+          <span className="verified-text">✓ verified</span> = a human corrected it.
         </p>
       </aside>
 

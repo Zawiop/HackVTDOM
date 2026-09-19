@@ -53,6 +53,10 @@ NEIGHBOURS = [
     ("Williams Hall, Blacksburg, VA", 37.22788, -80.42430, 22.0, 0.9),
     ("Newman Library, Blacksburg, VA", 37.22881, -80.41945, 78.0, 1.25),
 ]
+# Propagate spreads the *source row's* World State, so the supporting cast has to
+# share it with the hero row prebake_demo.py writes — otherwise Propagate correctly
+# reveals nothing and it looks broken.
+HERO_WORLD_STATE = "scorched"
 MCBRYDE = (37.23059, -80.42179)        # 241 m — inside the 250 m radius
 LANE_STADIUM = (37.21989, -80.41800)   # 1.1 km — outside every radius
 PHOTO = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2b/Burruss_Hall.jpg/640px-Burruss_Hall.jpg"
@@ -103,6 +107,7 @@ def real_placement(lat, lng, confidence=None):
     return Placement(
         rotationDegrees=computed["rotationDegrees"],
         scale=computed["scale"],
+        scaleXYZ=computed["scaleXYZ"],
         position=computed["position"],
         confidence=confidence or computed["confidence"],
         scoredRotationCandidates=[
@@ -143,7 +148,7 @@ def main() -> int:
     for name, lat, lng, rot, scale in NEIGHBOURS:
         computed = real_placement(lat, lng)
         g = store.save_generation(
-            row(name, lat, lng, "reclaimed", rot=rot, scale=scale, placement_override=computed))
+            row(name, lat, lng, HERO_WORLD_STATE, rot=rot, scale=scale, placement_override=computed))
         d = haversine_meters(*BURRUSS, lat, lng)
         fit = f"  [{computed.rotationDegrees}deg, scale {computed.scale}]" if computed else ""
         print(f"  neighbour {name.split(',')[0]:<16} {d:6.1f}m  {g.confidence_state}{fit}")
@@ -152,7 +157,7 @@ def main() -> int:
     lat, lng = MCBRYDE
     # Forced auto-low whatever step 08 thinks — this row exists to demo step 09.
     low = store.save_generation(
-        row("McBryde Hall, Blacksburg, VA", lat, lng, "reclaimed",
+        row("McBryde Hall, Blacksburg, VA", lat, lng, HERO_WORLD_STATE,
             rot=15.0, scale=0.55, confidence="auto-low",
             placement_override=real_placement(lat, lng, confidence="auto-low"))
     )
@@ -161,7 +166,7 @@ def main() -> int:
 
     # --- outside every radius: proves the radius filter actually filters ---
     lat, lng = LANE_STADIUM
-    store.save_generation(row("Lane Stadium, Blacksburg, VA", lat, lng, "reclaimed",
+    store.save_generation(row("Lane Stadium, Blacksburg, VA", lat, lng, HERO_WORLD_STATE,
                               rot=0.0, placement_override=real_placement(lat, lng)))
     print(f"  far building    Lane Stadium     {haversine_meters(*BURRUSS, lat, lng):6.1f}m"
           f"  (outside 250m)")

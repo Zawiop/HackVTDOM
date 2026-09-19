@@ -177,8 +177,11 @@ export interface PlacementResult {
   scoredRotationCandidates: ScoredRotationCandidate[];
   /** Keyed by check name, so step 09 knows which uncertainty it is showing. */
   checks: Record<string, PlacementCheck>;
-  /** Footprint area as a share of its oriented bounding box; caps achievable IoU. */
+  /** Footprint area as a share of its oriented bounding box. */
   rectangularity: number;
+  /** Best IoU this mesh could reach at any rotation, capped by footprint shape
+   *  AND mesh area. The rotation check is scored against this, not against 1.0. */
+  achievableIou: number;
   warnings: string[];
   rotation_note: string;
 }
@@ -187,6 +190,8 @@ export interface PlacementResult {
 export interface PlacementRecord {
   rotationDegrees: number;
   scale: number;
+  /** Non-uniform fit, present only when proportions disagree past 30%. */
+  scaleXYZ?: [number, number, number] | null;
   /** [lat, lng, z] */
   position: [number, number, number];
   confidence: ConfidenceState;
