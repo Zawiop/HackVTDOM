@@ -21,6 +21,27 @@ new ScenegraphLayer({
 ```
 `VERIFY BEFORE BUILDING`: the `[pitch, yaw, roll]` axis order and the `90` roll constant are dependent on the up-axis convention your normalized meshes ended up in after step 07 — if step 06's TripoSR output needed axis correction, this constant may need to change. Confirm by rendering one known mesh and checking it stands upright and facing a sensible direction before wiring up the full data-driven layer.
 
+## VERIFIED 2026-09-19 (deck.gl 9.4.0, maplibre-gl 5.24.0) — two corrections
+
+**1. `roll: 90` is correct, and it is load-bearing.** Confirmed visually against a
+purpose-built asymmetric mesh (`frontend/public/placeholder.glb`: 10m x 6m
+footprint, pitched roof, a marker block on its front face, base-centred pivot,
+Y-up). At `roll: 90` buildings stand upright; at `roll: 0` they lie flat on the
+ground. Step 07 must keep emitting Y-up glTF for this constant to hold — the
+axis-check slider in the app's left panel flips it live if that ever changes.
+
+**2. `scenegraph: d => d.mesh_url` does NOT work.** In deck.gl 9 the `scenegraph`
+prop is typed `any` (a URL / parsed glTF / Promise) — it is *not* an
+`Accessor<DataT, ...>` the way `getOrientation`, `getScale` and `getTranslation`
+are. Passing a function makes the layer attempt to load the function itself as a
+model. Since every building has its own mesh, rows must be **grouped by
+`mesh_url`, one ScenegraphLayer per distinct mesh**. See
+`frontend/src/map/layers.js` (`groupByMesh`, `buildScenegraphLayers`).
+
+Also worth knowing: a glTF without a `NORMAL` attribute makes luma.gl warn and
+fall back to geometric normals, which flattens the shading so the roof pitch is
+invisible. Whatever step 07 exports should carry normals.
+
 ## Low-confidence visual treatment
 Rows with `confidence_state` of `auto-low` get a visible colored ring/outline (not hidden) — clicking one opens the correction controls from step 09 directly, not just a flag with no action.
 
