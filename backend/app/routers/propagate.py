@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ..services.geo import VALID_RADII_M, haversine_meters, within_radius
 from ..models import Generation
@@ -28,18 +28,34 @@ NEIGHBOUR_MATCH_M = 20.0
 
 
 class NeighbourFootprint(BaseModel):
-    """A neighbour centroid from step 02's cached Overpass response.
+    """A neighbour from step 02's cached Overpass response.
 
-    Optional: propagate works without it by matching on stored rows alone.
-    Supplying it is what lets the UI report `pending` neighbours.
+    Accepts step 02's `FootprintCandidate` verbatim: that model carries
+    `centroid` in GeoJSON [lng, lat] order, so the frontend can hand us
+    `footprintResult.neighbors` untouched. Explicit lat/lng still works for
+    callers that already have plain coordinates.
+
+    Optional either way — propagate works by matching stored rows alone.
+    Supplying neighbours is what lets the UI report `pending` ones honestly.
     """
 
     model_config = ConfigDict(extra="allow")
 
-    lat: float
-    lng: float
+    lat: float | None = None
+    lng: float | None = None
+    centroid: list[float] | None = None  # [lng, lat], GeoJSON order
     address: str | None = None
+    osmId: int | str | None = None
     osm_id: int | str | None = None
+
+    @model_validator(mode="after")
+    def _resolve_coords(self) -> "NeighbourFootprint":
+        if self.lat is None or self.lng is None:
+            if self.centroid is None or len(self.centroid) < 2:
+                raise ValueError("neighbour needs either lat+lng or centroid [lng, lat]")
+            # GeoJSON is [lng, lat] — getting this backwards is the classic bug.
+            self.lng, self.lat = float(self.centroid[0]), float(self.centroid[1])
+        return self
 
 
 class PropagateRequest(BaseModel):
