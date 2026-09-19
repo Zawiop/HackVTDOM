@@ -13,7 +13,7 @@ from typing import Any
 
 import httpx
 
-from ..models import Correction, Generation, GenerationCreate
+from ..models.contracts import Correction, Generation, GenerationCreate
 from .errors import NotFoundError, PersistenceError
 
 TABLE = "generations"

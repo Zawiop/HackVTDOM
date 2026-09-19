@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from app.geo import offset_meters
-from app.models import GenerationCreate, Placement
+from app.models.contracts import GenerationCreate, PlacementRecord
 
 ORIGIN = (37.2295, -80.4234)
 
@@ -13,7 +13,7 @@ def _at(store, north_m, east_m, world_state="reclaimed", address=None):
         GenerationCreate(
             address=address or f"Neighbour {north_m}N {east_m}E",
             lat=lat, lng=lng, world_state=world_state,
-            placement=Placement(confidence="auto-high"),
+            placement=PlacementRecord(confidence="auto-high"),
         )
     )
 
@@ -22,7 +22,7 @@ def _source(store):
     return store.save_generation(
         GenerationCreate(
             address="Burruss Hall", lat=ORIGIN[0], lng=ORIGIN[1],
-            world_state="reclaimed", placement=Placement(confidence="auto-high"),
+            world_state="reclaimed", placement=PlacementRecord(confidence="auto-high"),
         )
     )
 

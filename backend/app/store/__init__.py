@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from ..config import Settings, settings
+from ..config import Settings, get_settings
 from .base import GenerationStore
 from .errors import NotFoundError, PersistenceError
 from .sqlite_store import SqliteStore
@@ -16,11 +16,16 @@ __all__ = [
 
 
 def build_store(cfg: Settings) -> GenerationStore:
+    """Supabase when it is configured, otherwise the local SQLite fallback.
+
+    Both implement the same protocol with the same semantics, so switching is a
+    single environment variable rather than a code change.
+    """
     if cfg.store_backend == "supabase":
         return SupabaseStore(cfg.supabase_url, cfg.supabase_secret_key)
-    return SqliteStore(cfg.sqlite_path)
+    return SqliteStore(cfg.sn_sqlite_path)
 
 
 @lru_cache(maxsize=1)
 def get_store() -> GenerationStore:
-    return build_store(settings)
+    return build_store(get_settings())

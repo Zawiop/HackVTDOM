@@ -5,11 +5,11 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from ..models import Correction, Generation, GenerationCreate
+from ..models.contracts import Correction, Generation, GenerationCreate
 from ..store import GenerationStore, NotFoundError, PersistenceError, get_store
 
 log = logging.getLogger("scorched.generations")
-router = APIRouter(prefix="/api", tags=["generations"])
+router = APIRouter(tags=["generations"])
 
 
 def _loud(e: PersistenceError) -> HTTPException:
@@ -20,14 +20,6 @@ def _loud(e: PersistenceError) -> HTTPException:
     """
     log.error("PERSISTENCE FAILURE [%s]: %s", e.operation, e.detail)
     return HTTPException(status_code=502, detail=f"persistence.{e.operation}: {e.detail}")
-
-
-@router.get("/health")
-def health(store: GenerationStore = Depends(get_store)) -> dict:
-    try:
-        return {"ok": True, "store": store.health()}
-    except PersistenceError as e:
-        raise _loud(e) from e
 
 
 @router.post("/generations", response_model=Generation, status_code=201)

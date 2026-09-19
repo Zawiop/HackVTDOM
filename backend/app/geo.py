@@ -1,14 +1,28 @@
-"""Geodesic helpers.
+"""Geodesic helpers for persistence and propagate (steps 09-11).
 
-Degrees-to-metres varies with latitude, so nothing here assumes a fixed
-conversion factor (the same warning step 02 gives for footprint sizing).
+Coordinate order warning: this module works in **(lat, lng)**, matching the
+database columns and `placement.position`. `app/services/geo_math.py` works in
+**(lng, lat)** GeoJSON order, matching Overpass polygons. The conversions below
+are the only place the two orders meet — keep it that way.
 """
 from __future__ import annotations
 
 import math
 
+from .services.geo_math import meters_per_degree as _meters_per_degree_lnglat
+
 EARTH_RADIUS_M = 6_371_008.8
 VALID_RADII_M: tuple[int, ...] = (50, 100, 250)
+
+
+def meters_per_degree(lat: float) -> tuple[float, float]:
+    """(metres per degree latitude, metres per degree longitude) at `lat`.
+
+    Delegates to services.geo_math, which returns (lng, lat) — swapped here so
+    callers in this module stay in lat/lng order.
+    """
+    m_lng, m_lat = _meters_per_degree_lnglat(lat)
+    return m_lat, m_lng
 
 
 def haversine_meters(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
@@ -40,14 +54,6 @@ def within_radius(
             out.append({**p, "distance_m": round(d, 2)})
     out.sort(key=lambda p: p["distance_m"])
     return out
-
-
-def meters_per_degree(lat: float) -> tuple[float, float]:
-    """(metres per degree latitude, metres per degree longitude) at `lat`."""
-    lat_r = math.radians(lat)
-    m_lat = 111_132.92 - 559.82 * math.cos(2 * lat_r) + 1.175 * math.cos(4 * lat_r)
-    m_lng = 111_412.84 * math.cos(lat_r) - 93.5 * math.cos(3 * lat_r)
-    return m_lat, m_lng
 
 
 def offset_meters(lat: float, lng: float, d_north_m: float, d_east_m: float) -> tuple[float, float]:

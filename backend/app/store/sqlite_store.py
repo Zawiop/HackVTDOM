@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..models import Correction, Generation, GenerationCreate
+from ..models.contracts import Correction, Generation, GenerationCreate
 from .errors import NotFoundError, PersistenceError
 
 _SCHEMA = """

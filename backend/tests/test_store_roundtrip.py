@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.models import Correction, GenerationCreate, Placement
+from app.models.contracts import Correction, GenerationCreate, PlacementRecord
 from app.store.errors import NotFoundError, PersistenceError
 
 
@@ -37,7 +37,7 @@ def test_placement_json_survives_intact(store, sample_payload):
 def test_confidence_state_defaults_from_placement(store):
     low = GenerationCreate(
         address="Torgersen Hall", lat=37.2296, lng=-80.4139,
-        placement=Placement(confidence="auto-low"),
+        placement=PlacementRecord(confidence="auto-low"),
     )
     assert store.save_generation(low).confidence_state == "auto-low"
 
@@ -46,7 +46,7 @@ def test_unknown_placement_fields_are_preserved(store):
     """Step 08 is being built in parallel; persistence must not drop new fields."""
     payload = GenerationCreate(
         address="Unknown-Fields Hall", lat=37.0, lng=-80.0,
-        placement=Placement.model_validate(
+        placement=PlacementRecord.model_validate(
             {"rotationDegrees": 10.0, "scale": 1.0, "footprintIoU": 0.93,
              "collisionFlag": False, "confidence": "auto-high"}
         ),

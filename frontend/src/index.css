@@ -1,0 +1,291 @@
+:root {
+  --bg: #12100d;
+  --panel: #1b1813;
+  --line: #3a332a;
+  --text: #e8e0d2;
+  --muted: #9c9382;
+  --accent: #c8903a;
+  --ok: #6f8f4a;
+  --warn: #c2703a;
+  color-scheme: dark;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 2.5rem 1rem 4rem;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.9rem;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.sub {
+  margin: 0.25rem 0 1.75rem;
+  color: var(--muted);
+}
+
+form {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+input {
+  flex: 1;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+}
+
+input:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+button {
+  padding: 0.65rem 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #1a1408;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 1rem 1.15rem;
+  margin-bottom: 1rem;
+}
+
+.note {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0.4rem 0;
+}
+
+.error {
+  color: var(--warn);
+}
+
+.mono {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.88rem;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
+.badge.auto-high {
+  background: color-mix(in srgb, var(--ok) 25%, transparent);
+  color: var(--ok);
+}
+
+.badge.auto-low {
+  background: color-mix(in srgb, var(--warn) 25%, transparent);
+  color: var(--warn);
+}
+
+.candidates {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.candidates button {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: var(--text);
+  font-weight: 400;
+}
+
+.candidates button.chosen {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0.75rem 0 0;
+}
+
+.facts dt {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.facts dd {
+  margin: 0;
+}
+
+footer {
+  margin-top: 2rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Steps 09-12: full-screen map with floating panels.
+
+   Built on the variables above so the step 13 skin restyles both halves at
+   once. The centred `.app` column from the entry-only build is unused now —
+   `EntryPanel` lives inside the left panel instead.
+   ───────────────────────────────────────────────────────────────────────── */
+
+html, body, #root { height: 100%; }
+
+.app-shell { position: relative; height: 100%; width: 100%; }
+
+/* MapLibre adds `.maplibregl-map { position: relative }` to this same element,
+   and its stylesheet is imported after this one, so an unqualified `.map-root`
+   rule loses the cascade and the map collapses to zero height. Qualifying by
+   the parent wins on specificity instead of relying on import order. */
+.app-shell .map-root { position: absolute; inset: 0; height: 100%; width: 100%; }
+
+.panel {
+  position: absolute;
+  z-index: 10;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.85rem;
+  max-height: calc(100% - 2rem);
+  overflow-y: auto;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.78rem;
+  backdrop-filter: blur(6px);
+}
+
+.panel-left  { top: 1rem; left: 1rem;  width: 17.5rem; }
+.panel-right { top: 1rem; right: 3.5rem; width: 21rem; }
+
+.panel h2 { font-size: 0.82rem; margin: 0 0 0.45rem; letter-spacing: 0.06em; }
+.panel h3 {
+  font-size: 0.68rem; margin: 0.9rem 0 0.4rem; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.09em;
+}
+.panel h3.inline-h3 { margin: 0; }
+.panel, .panel * { overflow-wrap: break-word; }
+
+/* Their filled amber button is too heavy for dense panels; keep it for .primary. */
+.panel button {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 400;
+  background: color-mix(in srgb, var(--line) 45%, transparent);
+  color: var(--text);
+  border-radius: 4px;
+}
+.panel button:hover:not(:disabled) { border-color: var(--accent); }
+.panel button.active { border-color: var(--accent); color: var(--accent); }
+.panel button.primary { background: var(--accent); color: #1a1408; font-weight: 600; }
+.panel input[type="text"], .panel input:not([type]) { padding: 0.35rem 0.5rem; font-size: 0.75rem; }
+.panel input[type="range"] { flex: 1; accent-color: var(--accent); padding: 0; }
+
+.entry-form { display: flex; gap: 0.35rem; margin: 0 0 0.4rem; }
+
+.row { display: flex; align-items: center; gap: 0.5rem; margin: 0.35rem 0; }
+.row label { color: var(--muted); min-width: 3.6rem; }
+.spread { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.push-top { margin-top: 0.6rem; }
+.push-bottom { margin-bottom: 0.5rem; }
+
+.btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem; }
+.btn-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+.mono-sm { font-size: 0.7rem; color: var(--muted); }
+.hint { font-size: 0.7rem; color: var(--muted); line-height: 1.5; margin: 0.3rem 0; }
+.muted { color: var(--muted); }
+.error-text { color: var(--warn); }
+.warn-text { color: var(--warn); }
+
+.error-banner {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 50;
+  background: var(--warn); color: #17120a; padding: 0.5rem 0.9rem; font-size: 0.75rem;
+}
+.inline-retry { margin-left: 0.75rem; }
+
+/* A human-corrected row reads as neither "trusted" nor "flagged". */
+.badge.manually-verified {
+  background: color-mix(in srgb, #7fb6ff 22%, transparent);
+  color: #7fb6ff;
+}
+
+.thumbs { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.thumbs figure { margin: 0; }
+.thumbs img {
+  width: 100%; height: 5.5rem; object-fit: cover;
+  border: 1px solid var(--line); border-radius: 4px; background: var(--bg);
+}
+.thumbs figcaption { font-size: 0.62rem; color: var(--muted); margin-top: 0.2rem; }
+.thumb-missing {
+  width: 100%; height: 5.5rem; display: grid; place-items: center;
+  border: 1px dashed var(--line); border-radius: 4px;
+  background: var(--bg); color: var(--muted); font-size: 0.62rem;
+}
+
+.timeline { list-style: none; margin: 0; padding: 0; }
+.timeline li {
+  padding: 0.3rem 0.5rem; border-left: 2px solid var(--line); margin-left: 0.25rem;
+  cursor: pointer; display: flex; justify-content: space-between;
+  gap: 0.5rem; align-items: center;
+}
+.timeline li:hover:not(.static):not(.timeline-reality) {
+  background: color-mix(in srgb, var(--line) 35%, transparent);
+}
+.timeline li.current { border-left-color: var(--accent); color: var(--accent); }
+.timeline li.static, .timeline li.timeline-reality { cursor: default; }
+.timeline li.timeline-reality { border-left-style: dashed; }
+.timeline li > span:first-child { min-width: 0; }
+.timeline .badge { flex: 0 0 auto; white-space: nowrap; }
+.timeline.compact li { padding: 0.25rem 0.4rem; }
+
+.correction { outline: none; }
+
+/* MapLibre's controls sit on a dark basemap here. */
+.maplibregl-ctrl-attrib { font-size: 0.65rem; }

@@ -1,30 +1,37 @@
 {
-  "name": "scorched-nebraska-frontend",
+  "name": "scorched-nebraska-web",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@deck.gl/core": "^9.1.0",
-    "@deck.gl/layers": "^9.1.0",
+    "@deck.gl/core": "^9.4.0",
+    "@deck.gl/layers": "^9.4.0",
     "@deck.gl/mapbox": "^9.4.0",
-    "@deck.gl/mesh-layers": "^9.1.0",
-    "@deck.gl/react": "^9.1.0",
-    "@loaders.gl/core": "^4.3.0",
-    "@loaders.gl/gltf": "^4.3.0",
-    "maplibre-gl": "^5.0.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "@deck.gl/mesh-layers": "^9.4.0",
+    "@deck.gl/react": "^9.4.0",
+    "@loaders.gl/core": "^4.4.0",
+    "@loaders.gl/gltf": "^4.5.0",
+    "maplibre-gl": "^5.24.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^6.0.0",
-    "vitest": "^3.2.7"
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "oxc-transform-react": "^0.145.0",
+    "oxlint": "^1.81.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^4.0.0"
   }
 }

@@ -1,13 +1,13 @@
 """Step 11's one hard rule: one row per generation, never one per address."""
 from __future__ import annotations
 
-from app.models import GenerationCreate, Placement
+from app.models.contracts import GenerationCreate, PlacementRecord
 
 
 def _gen(address: str, world_state: str) -> GenerationCreate:
     return GenerationCreate(
         address=address, lat=37.2295, lng=-80.4234, world_state=world_state,
-        placement=Placement(confidence="auto-high"),
+        placement=PlacementRecord(confidence="auto-high"),
     )
 
 

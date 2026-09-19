@@ -1,13 +1,46 @@
-# STATUS — persistence + map (files 11, 12, 09, 10)
+# STATUS — Scorched Nebraska
 
-Owner: Rishik. Last updated 2026-09-19.
+Merged branch: `ajeet/foundation-entry-pipeline` (files 01, 02, skeleton) +
+`rishik/persistence-map` (files 09, 10, 11, 12). Last updated 2026-09-19.
 
-## State: all four files implemented, tested, and verified running end to end.
+Steps 03-08 are still stubs returning HTTP 501 with a pointer to their spec file.
 
-56 tests pass (37 backend pytest, 19 frontend vitest). The map renders real 3D
-meshes at real VT coordinates, the correction loop writes back to the database,
-and Propagate reveals pre-baked neighbours with the camera pulling out for the
-reveal.
+---
+
+## What runs today
+
+| Piece | State |
+| --- | --- |
+| FastAPI skeleton, all routers mounted | Done |
+| `GET /api/geocode` (01) | Done — verified live against Nominatim |
+| `POST /api/footprint` (02) | Done — verified live against Overpass |
+| `POST/GET /api/generations`, `GET /api/history` (11) | Done |
+| `PATCH /api/generations/{id}/correction` (09) | Done |
+| `POST /api/propagate` (10) | Done |
+| MapLibre + deck.gl 3D map, click panel (12) | Done |
+| Steps 03-08 | Stubbed, HTTP 501 |
+
+Tests: **53 backend** (`pytest`) + **19 frontend** (`npm test`) = 72, all
+passing. Plus 32 live contract checks in `backend/tests/verify_live.py`.
+
+### Run it
+
+```bash
+cd backend && python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m uvicorn app.main:app --reload --port 8000
+```
+
+```bash
+cd frontend && npm install && npm run dev
+```
+
+```bash
+# demo data — re-run before judging to reset the flagged row
+cd backend && .venv/bin/python seed/seed_demo.py --reset
+```
+
+Copy `backend/.env.example` → `backend/.env` and `frontend/.env.example` →
+`frontend/.env`. Neither `.env` is committed and neither should ever be.
 
 ---
 
@@ -16,53 +49,64 @@ reveal.
 ### 1. `SUPABASE_URL` is empty — running on a local SQLite fallback
 
 `backend/.env` and `frontend/.env` both have the **keys** set but the **URL
-blank**. The new `sb_secret_…` / `sb_publishable_…` key format does not embed the
-project ref, so the URL cannot be derived from the key — it has to be copied from
-the dashboard.
+blank**. The `sb_secret_…` / `sb_publishable_…` key format does not embed the
+project ref, so the URL cannot be derived — it has to be copied from the
+dashboard.
 
 **Fix (2 minutes):** Supabase dashboard → Project Settings → Data API → Project
-URL (looks like `https://abcdefghijkl.supabase.co`). Paste it into
-`SUPABASE_URL` in `backend/.env` and `VITE_SUPABASE_URL` in `frontend/.env`.
+URL (looks like `https://abcdefghijkl.supabase.co`). Paste into `SUPABASE_URL`
+in `backend/.env`.
 
-**Until then**, nothing is blocked: the store layer auto-selects a local SQLite
-file (`backend/local.db`) with an identical schema and identical semantics.
-Switching to Supabase is that one env var — no code change. `GET /api/health`
-reports which backend is live.
+**Until then nothing is blocked:** the store auto-selects a local SQLite file
+(`backend/local.db`) with an identical schema and identical semantics.
+Switching is that one env var — no code change. `GET /api/health` reports which
+backend is live.
 
 ### 2. The `generations` table still has to be created once
 
-PostgREST cannot issue DDL, so this cannot be automated with the keys available.
-Paste `backend/sql/001_generations.sql` into the Supabase SQL editor and run it.
-It creates the table, the indexes, and a read-only RLS policy for the anon key.
+PostgREST cannot issue DDL. Paste `backend/sql/001_generations.sql` into the
+Supabase SQL editor and run it. It creates the table, the indexes, and a
+read-only RLS policy for the anon key.
 
-### 3. Waiting on teammates (not blocking my work)
+### 3. `NOMINATIM_USER_AGENT` still has a placeholder email
 
-- Real `mesh_url` values from steps 06/07 — every seeded row currently points at
-  `frontend/public/placeholder.glb`.
-- Real `source_photo` / `artifact` URLs from steps 03/05 — the panel already
-  degrades to a "no image" placeholder, so broken URLs do not break the UI.
-- Neighbour footprints from step 02 — `POST /api/propagate` accepts an optional
-  `neighbors` array and reports any that have no pre-baked row as `pending`.
-  Nothing supplies it yet, so `pending` is always empty today.
+Nominatim's usage policy requires a real contact address and blocks generic
+agents. Put a real team address in `backend/.env` before demo day.
+
+### 4. Waiting on steps 03-08
+
+Real `mesh_url`, `source_photo` and `artifact` values. Every seeded row points
+at `frontend/public/placeholder.glb`, and the panel degrades to a "no image"
+placeholder, so nothing breaks in the meantime.
 
 ---
 
-## API contract (build against this)
+## API contract
 
-Base URL is proxied at `/api` from the Vite dev server.
+Every route is under `/api`. Models live in `backend/app/models/contracts.py`
+and are mirrored field for field in `frontend/src/types/contract.ts` — **change
+one, change the other.**
 
-| Method | Path | Purpose |
+| Route | Step | State |
 | --- | --- | --- |
-| GET | `/api/health` | which store backend is live |
-| POST | `/api/generations` | **save one generation** (201) |
-| GET | `/api/generations` | every row — the map layer's data |
-| GET | `/api/generations/{id}` | one row |
-| GET | `/api/history?address=…` | that address's sequence, oldest first |
-| PATCH | `/api/generations/{id}/correction` | step 09 write-back |
-| POST | `/api/propagate` | step 10 reveal |
-| GET | `/api/propagate/radii` | `[50, 100, 250]` |
+| `GET /health` | — | reports store backend + footprint cache size |
+| `GET /geocode?q=` | 01 | done |
+| `POST /footprint` | 02 | done |
+| `GET /photo/mapillary`, `POST /photo/upload` | 03 | stub |
+| `GET /worldstates` | 04 | stub |
+| `POST /generate/image` | 05 | stub |
+| `POST /generate/mesh` | 06 | stub |
+| `POST /mesh/normalize` | 07 | stub |
+| `POST /placement` | 08 | stub |
+| `POST /generations` | 11 | done — save one generation |
+| `GET /generations` | 11/12 | done — every row, feeds the map |
+| `GET /generations/{id}` | 11 | done |
+| `GET /history?address=` | 11 | done — that address's sequence, oldest first |
+| `PATCH /generations/{id}/correction` | 09 | done |
+| `POST /propagate` | 10 | done |
+| `GET /propagate/radii` | 10 | done — `[50, 100, 250]` |
 
-### POST /api/generations — what steps 01-08 should send
+### POST /api/generations — what steps 05-08 should send
 
 ```json
 {
@@ -83,116 +127,136 @@ Base URL is proxied at `/api` from the Vite dev server.
 }
 ```
 
-Notes:
 - `placement` accepts **extra fields** and stores them verbatim — add
-  `footprintIoU`, `collisionFlag`, whatever step 08 produces, and persistence
-  will not drop it.
+  `footprintIoU`, `collisionFlag`, whatever step 08 produces, and nothing is
+  dropped.
 - `confidence_state` is optional; it defaults to `placement.confidence`.
-- Top-level unknown fields are **rejected with 422** on purpose, so a typo in a
-  field name fails loudly instead of silently vanishing.
+- Unknown **top-level** fields are rejected with 422 on purpose, so a typo
+  fails loudly instead of silently vanishing.
 - `position` is `[lat, lng, z]`. The map converts to deck.gl's `[lng, lat, z]`.
+  Step 02's footprint geometry is the other way round — `[lng, lat]` GeoJSON
+  order. `POST /propagate` accepts either.
 
 ---
 
 ## Decisions worth knowing
 
+### Steps 01-02
+
+**The spec's Overpass query misses real buildings.** `way["building"]` silently
+returns nothing for any building mapped as a multipolygon relation — which at
+VT includes **Torgersen Hall, Newman Library, Kelly Hall, Main Eggleston Hall,
+East Eggleston Hall**. A way-only pull centred on Torgersen returned *Pearson
+Hall West*, 40 m away, at high confidence: exactly the "building growing out of
+the wrong footprint" failure the spec warns about. The query now asks for ways
+*and* relations and stitches relation outer members into one ring.
+
+**`footprintWidthMeters` / `footprintDepthMeters` are oriented to
+`rotationDegrees`, not axis-aligned.** A raw lat/lng box around a building at
+45° to the compass reports a near-square — for a real 80 × 40 m building it
+gives 84.85 × 84.85, overstating the short axis by more than 2×. Step 08 fits
+mesh scale to these numbers, so an axis-aligned box would corrupt every rotated
+building.
+
+**`selected` is `null` whenever the match is genuinely ambiguous.** Step 09 must
+**never** fall back to `candidates[0]` — that is the auto-pick the spec forbids.
+Every response carries a human-readable `reason`.
+
+**One Overpass query serves both the match and the neighbours.** A single 250 m
+query is partitioned: within 50 m become `candidates`, the rest `neighbors`.
+Steps 08 and 10 read `neighbors` off the step 02 response rather than
+re-querying Overpass.
+
+**Backoff is deferred, not immediate**, and there are four mirrors, because both
+spec'd Overpass endpoints were down simultaneously during the build. **Pre-cache
+the demo buildings the night before — this is not hypothetical, it happened
+twice.**
+
+### Steps 09-12
+
 **One row per generation, never one per address.** No upsert path, no unique
 constraint on `address`. The history timeline in the click panel is the visible
-proof — Burruss Hall currently shows `reclaimed → flooded → scorched`.
+proof — Burruss Hall shows `reclaimed → flooded → scorched`.
 
 **Write failures are loud.** Every store method raises; nothing returns a falsy
-sentinel. Route handlers log `PERSISTENCE FAILURE` and return 502, and the
-frontend client throws rather than resolving to `null`. A generation that looks
-saved but never persisted would quietly break both history and Propagate.
+sentinel. Handlers log `PERSISTENCE FAILURE` and return 502, and the frontend
+client throws rather than resolving to `null`. A generation that looked saved
+but never persisted would quietly break both history and Propagate.
 
-**Propagate reveals, it does not generate.** Per file 10, clicking Propagate
-during judging queries pre-baked rows within the radius that share the source's
-World State. Neighbours with no row come back as `pending` and are reported
-honestly ("4 revealed · 2 not pre-baked") rather than silently omitted.
+**Propagate reveals, it does not generate.** Clicking Propagate during judging
+queries pre-baked rows within the radius that share the source's World State.
+Neighbours with no row come back as `pending` and are reported honestly
+("4 revealed · 2 not pre-baked") rather than silently omitted.
 
-**Router auto-discovery.** `app/main.py` mounts every `router` it finds in
-`app/routes/*.py`. Drop a file in; do not edit `main.py`. Four of us are working
-in parallel and that file would otherwise be a constant merge conflict.
-
-**Esri satellite tiles** are added alongside the keyless OSM raster tiles for the
-panel's satellite toggle (file 12 asks for one). Also keyless, attribution
-included. OSM stays the default — no MapTiler key anywhere.
+**Esri satellite tiles** sit alongside the keyless OSM raster tiles for the
+panel's satellite toggle. Also keyless, attribution included. OSM stays the
+default — no MapTiler key anywhere.
 
 ---
 
-## Two corrections to file 12, both verified against running code
+## Two corrections to file 12, verified against running code
 
 1. **`scenegraph: d => d.mesh_url` does not work in deck.gl 9.** That prop is
-   typed `any` (URL / parsed glTF / Promise), *not* an `Accessor`. Rows are
-   grouped by `mesh_url` with one `ScenegraphLayer` per distinct mesh instead.
-2. **`roll: 90` is correct and load-bearing.** Verified visually: at `roll: 90`
-   buildings stand upright, at `roll: 0` they lie flat. Holds as long as step 07
-   keeps emitting Y-up glTF. The left panel has a live axis-check slider if that
-   ever changes. Meshes should also carry `NORMAL` or shading goes flat.
+   typed `any` (URL / parsed glTF / Promise), *not* an `Accessor` the way
+   `getOrientation` is. Passing a function makes the layer try to load the
+   function itself as a model. Rows are grouped by `mesh_url` with one
+   `ScenegraphLayer` per distinct mesh instead.
+2. **`roll: 90` is correct and load-bearing.** Verified visually against a
+   purpose-built asymmetric mesh: at `roll: 90` buildings stand upright, at
+   `roll: 0` they lie flat. Holds as long as step 07 emits Y-up glTF; the left
+   panel has a live axis-check slider if that changes. Meshes should also carry
+   a `NORMAL` attribute or shading goes flat and the roof pitch disappears.
 
 ---
 
-## Merging with `ajeet/foundation-entry-pipeline` (checked 2026-09-19)
+## Frontend toolchain gotchas found during the merge
 
-I compared both branches. **The API contract matches — that was the big risk and
-it is retired.** Their `Generation` and `PlacementRecord` models use the same
-field names, the same `position: [lat, lng, z]` ordering, the same
-`confidence_state` values and the same `/api` prefix as mine. Their
-`routers/stubs.py` explicitly reserves `/generations` and `/propagate` for this
-work with a 501 and a pointer to files 10/11. Nothing needs renegotiating.
+Three things bit during integration and will bite anyone who changes these
+versions. All three are commented at the site of the fix as well.
 
-What does conflict is **structure, not semantics**. 12 files exist on both
-branches:
+**1. `maplibre-gl` is pinned to v5, not v6.** On v6 the map silently never
+loads: `map.getStyle()` returns no sources and no layers, `isStyleLoaded()`
+stays false, no tile request is ever made, and **no error is emitted** — the
+canvas just stays blank. Its ESM worker loads but never finishes parsing the
+style. v5 works. `npm audit` flags v6-and-below over a DoS in the `image-size`
+ICNS/JXL/HEIF parsers; that is reachable only by feeding the map hostile image
+tiles, and ours come from two fixed sources. A blank map is the worse bug.
 
-| Theirs | Mine | Note |
-| --- | --- | --- |
-| `backend/app/routers/` | `backend/app/routes/` | same idea, different name |
-| `backend/app/models/contracts.py` | `backend/app/models.py` | package vs module |
-| `backend/app/main.py` | `backend/app/main.py` | they mount explicitly, I auto-discover |
-| `frontend/src/**/*.tsx` (TypeScript) | `frontend/src/**/*.jsx` (JavaScript) | — |
-| `config.py`, `package.json`, `index.html`, `.env.example`, `.claude/launch.json`, `STATUS.md` | same | straight duplicates |
+**2. `@vitejs/plugin-react` is deliberately not in `vite.config.ts`.** With
+Vite 8 (rolldown) it emits `RefreshRuntime.getRefreshReg(...)`, but the runtime
+Vite serves at `/@react-refresh` does not define it, so every component module
+throws and the app renders blank. Installing the optional `oxc-transform-react`
+peer does not help. Vite 8 transforms `.tsx` natively off `jsx: react-jsx` in
+`tsconfig.app.json`, so JSX, TypeScript and production builds are unaffected —
+the only loss is Fast Refresh, meaning an edit does a full reload instead of
+preserving component state.
 
-**Recommended resolution — theirs wins on structure, mine slots in.** They built
-the skeleton deliberately, stubs and all, so the lower-friction direction is to
-adapt my modules into their layout rather than the reverse:
-
-1. Move `app/routes/generations.py` and `app/routes/propagate.py` into
-   `app/routers/`, delete `routers/stubs.py`'s `/generations` + `/propagate`
-   entries, and add two `include_router(..., prefix="/api")` lines to their
-   `main.py`. My auto-discovery in `main.py` is then redundant — drop it.
-2. Move my `models.py` classes into their `models/contracts.py`. The shapes
-   already agree; `GenerationCreate`, `Correction` and `propagated_from` are
-   additive.
-3. `app/store/` and `app/geo.py` are unique to me and conflict with nothing.
-   Their `services/geo_math.py` overlaps `app/geo.py` — keep one.
-4. Frontend: their `.tsx` and my `.jsx` coexist under one Vite config, but my
-   components should be ported to TypeScript to match. Merge the two
-   `package.json` dependency lists (they need mine: deck.gl, maplibre-gl,
-   loaders.gl).
-
-I have **not** done any of this — it edits their files, and the other two agents
-have not pushed yet, so the merge is better done once with everyone's work in
-hand.
+**3. MapLibre's stylesheet overrides the map container's positioning.**
+`.maplibregl-map` sets `position: relative`, and its CSS is imported after
+`index.css`, so an unqualified `.map-root { position: absolute }` loses the
+cascade and the map collapses to **zero height** while still reporting full
+width. The rule is qualified as `.app-shell .map-root` to win on specificity
+rather than import order.
 
 ---
 
-## Running it
+## Open items for the team
 
-```bash
-# backend  (http://127.0.0.1:8000)
-cd backend && ./.venv/bin/uvicorn app.main:app --reload --port 8000
+1. **The footprint cache is in-memory**, so it dies with the server. Now that
+   step 11 has a store layer, the cleanest fix is a `footprint_cache` table
+   behind the same `GenerationStore`-style interface, keyed by rounded lat/lng
+   + radius. Not built yet — it touches step 02's module, so it needs Ajeet's
+   sign-off first.
+2. **Steps 03-08 own the middle of the pipeline.** Everything either side is
+   done, so the first end-to-end run is gated on those five stubs.
+3. **Pre-bake the demo buildings the night before judging** — both for Overpass
+   (which went down twice during the build) and for the TripoSR queue.
 
-# demo data — re-run before judging to reset the flagged row
-cd backend && ./.venv/bin/python seed/seed_demo.py --reset
+---
 
-# frontend (http://localhost:5173)
-cd frontend && npm run dev
+## Demo data
 
-# tests
-cd backend && ./.venv/bin/python -m pytest -q
-cd frontend && npm test
-```
-
-Seeded demo: Burruss Hall (3 World States → timeline), 3 pre-baked neighbours at
-41m / 90m / 185m, one deliberately `auto-low` row (McBryde Hall) to demo the
-correction loop, and Lane Stadium at 420m to prove the radius filter excludes.
+`backend/seed/seed_demo.py --reset` writes: Burruss Hall with three World States
+(the timeline), three pre-baked neighbours at 41 m / 90 m / 185 m, one
+deliberately `auto-low` row (McBryde Hall) for the correction demo, and Lane
+Stadium at 420 m to prove the radius filter excludes.

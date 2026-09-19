@@ -18,9 +18,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.config import settings                     # noqa: E402
+from app.config import get_settings                 # noqa: E402
 from app.geo import haversine_meters, offset_meters  # noqa: E402
-from app.models import GenerationCreate, Placement, ScoredRotation  # noqa: E402
+from app.models.contracts import GenerationCreate, PlacementRecord, ScoredRotation  # noqa: E402
 from app.store import build_store                    # noqa: E402
 
 BURRUSS = (37.22870, -80.42290)
@@ -29,7 +29,7 @@ PHOTO = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2b/Burruss_Hall.
 
 
 def placement(lat, lng, rot=47.5, scale=1.0, confidence="auto-high"):
-    return Placement(
+    return PlacementRecord(
         rotationDegrees=rot,
         scale=scale,
         position=[lat, lng, 0.0],
@@ -59,11 +59,12 @@ def main() -> int:
     ap.add_argument("--reset", action="store_true", help="delete the local sqlite db first")
     args = ap.parse_args()
 
-    if args.reset and settings.store_backend == "sqlite" and settings.sqlite_path.exists():
-        settings.sqlite_path.unlink()
-        print(f"removed {settings.sqlite_path}")
+    cfg = get_settings()
+    if args.reset and cfg.store_backend == "sqlite" and cfg.sn_sqlite_path.exists():
+        cfg.sn_sqlite_path.unlink()
+        print(f"removed {cfg.sn_sqlite_path}")
 
-    store = build_store(settings)
+    store = build_store(cfg)
     print(f"seeding into: {store.backend_name}")
 
     # --- source building, plus its history sequence (step 11 timeline) ---

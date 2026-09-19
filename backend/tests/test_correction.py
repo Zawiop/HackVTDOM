@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.models import Correction
+from app.models.contracts import Correction
 
 
 def test_correction_flips_state_and_updates_transform(store, sample_payload):

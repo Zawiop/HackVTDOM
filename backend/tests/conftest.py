@@ -8,7 +8,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.main import app  # noqa: E402
-from app.models import GenerationCreate, Placement, ScoredRotation  # noqa: E402
+from app.models.contracts import GenerationCreate, PlacementRecord, ScoredRotation  # noqa: E402
 from app.store import get_store  # noqa: E402
 from app.store.sqlite_store import SqliteStore  # noqa: E402
 
@@ -40,7 +40,7 @@ def sample_payload() -> GenerationCreate:
         artifact="https://example.invalid/burruss-reclaimed.png",
         mesh_url="https://example.invalid/burruss.glb",
         world_state="reclaimed",
-        placement=Placement(
+        placement=PlacementRecord(
             rotationDegrees=47.5,
             scale=1.83,
             position=[37.229_5, -80.423_4, 0.0],
