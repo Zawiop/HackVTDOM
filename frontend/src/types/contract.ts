@@ -176,17 +176,65 @@ export interface PlacementRecord {
   scoredRotationCandidates: { rotationDegrees: number; iou: number }[];
 }
 
-/** Step 11 — one row per generation, never one per address. */
+/** Step 11 — one row per generation, never one per address.
+ *
+ * `id` and `created_at` are non-null: every row the store returns has both.
+ * The pre-persistence shape is `GenerationCreate` below.
+ */
 export interface Generation {
-  id: string | null;
+  id: string;
   address: string;
   lat: number;
   lng: number;
   source_photo: string | null;
   artifact: string | null;
-  placement: PlacementRecord | null;
+  placement: PlacementRecord;
   mesh_url: string | null;
   world_state: WorldState | null;
   confidence_state: ConfidenceState;
-  created_at: string | null;
+  /** Set when this row came from a step 10 propagate run. */
+  propagated_from?: string | null;
+  created_at: string;
 }
+
+/** Step 11 — POST /api/generations. Unknown top-level fields are rejected. */
+export interface GenerationCreate {
+  address: string;
+  lat: number;
+  lng: number;
+  source_photo?: string | null;
+  artifact?: string | null;
+  placement?: Partial<PlacementRecord>;
+  mesh_url?: string | null;
+  world_state?: WorldState | null;
+  confidence_state?: ConfidenceState | null;
+  propagated_from?: string | null;
+}
+
+/** Step 09 — PATCH /api/generations/{id}/correction.
+ *
+ * Only transform fields are mutable. The backend always flips the row to
+ * `manually-verified`; the client never sends that itself.
+ */
+export interface Correction {
+  rotationDegrees?: number;
+  scale?: number;
+  position?: [number, number, number];
+}
+
+/** Step 10 — POST /api/propagate. */
+export interface PropagateResponse {
+  source: Generation;
+  radius_meters: number;
+  world_state: WorldState | null;
+  /** Pre-baked rows inside the radius sharing the source's World State. */
+  revealed: Generation[];
+  /** Neighbours inside the radius with no generated row yet. */
+  pending: { lat: number; lng: number; address?: string | null }[];
+  counts: { revealed: number; pending: number; pre_baked: number };
+}
+
+/** Live, unsaved edits previewed on the map before a correction is saved. */
+export type PlacementOverrides = Partial<
+  Pick<PlacementRecord, "rotationDegrees" | "scale" | "position">
+>;

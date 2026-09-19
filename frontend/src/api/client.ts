@@ -1,14 +1,27 @@
 import type {
+  Correction,
   FootprintResult,
   GenerateImageResult,
   GenerateMeshResult,
   GeocodeResult,
+  Generation,
+  GenerationCreate,
+  PropagateResponse,
 } from "../types/contract";
 
 // Empty by default so requests go through Vite's /api proxy — no CORS in dev.
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
-export class ApiError extends Error {}
+export class ApiError extends Error {
+  status: number;
+  path: string;
+  constructor(message: string, status: number, path: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.path = path;
+  }
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, {
@@ -18,7 +31,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    throw new ApiError(body?.detail ?? `Request failed (HTTP ${response.status})`);
+    const detail = body?.detail ?? `Request failed (HTTP ${response.status})`;
+    const message = typeof detail === "string" ? detail : JSON.stringify(detail);
+    console.error(`[api] ${path} -> ${response.status}: ${message}`);
+    throw new ApiError(message, response.status, path);
   }
   return response.json() as Promise<T>;
 }
@@ -77,6 +93,68 @@ export function generateMesh(
   return request<GenerateMeshResult>("/api/generate-mesh", {
     method: "POST",
     body: JSON.stringify({ imageUrl, ...footprint }),
+    signal,
+  });
+}
+
+// --- Steps 09-11: persistence, correction, propagate ---
+//
+// A failed write must never look like a success in the UI (step 11), so every
+// call below throws rather than resolving to null, and logs before it does.
+
+/** Step 11 — every persisted row, the data behind the map's 3D layer. */
+export function listGenerations(signal?: AbortSignal) {
+  return request<Generation[]>("/api/generations", { signal });
+}
+
+export function getGeneration(id: string, signal?: AbortSignal) {
+  return request<Generation>(`/api/generations/${id}`, { signal });
+}
+
+/** Step 11 — one address's sequence, oldest first: Reality → Flooded → … */
+export function getHistory(address: string, signal?: AbortSignal) {
+  return request<Generation[]>(
+    `/api/history?address=${encodeURIComponent(address)}`,
+    { signal },
+  );
+}
+
+/** Step 11 — save one generation. Never an upsert; a repeat address appends. */
+export function saveGeneration(payload: GenerationCreate, signal?: AbortSignal) {
+  return request<Generation>("/api/generations", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    signal,
+  });
+}
+
+/** Step 09 — persist a corrected transform; backend flips to manually-verified. */
+export function correctGeneration(
+  id: string,
+  correction: Correction,
+  signal?: AbortSignal,
+) {
+  return request<Generation>(`/api/generations/${id}/correction`, {
+    method: "PATCH",
+    body: JSON.stringify(correction),
+    signal,
+  });
+}
+
+/** Step 10 — reveal pre-baked neighbours within a radius. Never generates live. */
+export function propagate(
+  sourceGenerationId: string,
+  radiusMeters: 50 | 100 | 250,
+  neighbors: unknown[] = [],
+  signal?: AbortSignal,
+) {
+  return request<PropagateResponse>("/api/propagate", {
+    method: "POST",
+    body: JSON.stringify({
+      source_generation_id: sourceGenerationId,
+      radius_meters: radiusMeters,
+      neighbors,
+    }),
     signal,
   });
 }

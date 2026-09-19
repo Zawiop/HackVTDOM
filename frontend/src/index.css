@@ -1,45 +1,164 @@
-/* Entry pipeline (steps 01-02) additions on top of styles.css.
-   Uses the same --sn-* tokens so step 13's skin restyles both at once. */
+/* Single stylesheet for the whole app.
+   Structural only — step 13's skin restyles everything by overriding the
+   --sn-* tokens below rather than touching individual rules. */
 
-.entry-form {
-  display: flex;
-  gap: 6px;
-  margin: 6px 0 8px;
+:root {
+  --sn-bg: #0f1210;
+  --sn-panel: #171c19;
+  --sn-border: #2b332d;
+  --sn-text: #dfe6e0;
+  --sn-muted: #93a096;
+  --sn-accent: #6ee7a0;
+  --sn-warn: #e6a028;
+  --sn-danger: #e2544a;
+  --sn-verified: #7fb6ff;
+  --sn-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: dark;
 }
 
-.entry-form input {
-  flex: 1;
-  min-width: 0;
-  padding: 5px 7px;
-  border: 1px solid var(--sn-border);
-  border-radius: 4px;
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; margin: 0; }
+
+body {
   background: var(--sn-bg);
   color: var(--sn-text);
-  font: inherit;
+  font-family: var(--sn-mono);
+  font-size: 13px;
 }
 
-.entry-form input:focus-visible {
-  outline: none;
-  border-color: var(--sn-accent);
+.app-shell { position: relative; height: 100%; width: 100%; }
+
+/* MapLibre adds `.maplibregl-map { position: relative }` to this same element,
+   and its stylesheet is imported after this one, so an unqualified `.map-root`
+   rule loses the cascade and the map collapses to zero height while still
+   reporting full width. Qualifying by the parent wins on specificity instead
+   of depending on import order. */
+.app-shell .map-root { position: absolute; inset: 0; height: 100%; width: 100%; }
+
+/* --- floating panels --- */
+
+.panel {
+  position: absolute;
+  z-index: 10;
+  background: color-mix(in srgb, var(--sn-panel) 94%, transparent);
+  border: 1px solid var(--sn-border);
+  border-radius: 6px;
+  padding: 12px;
+  max-height: calc(100% - 32px);
+  overflow-y: auto;
+  backdrop-filter: blur(6px);
 }
+
+.panel-left  { top: 16px; left: 16px;  width: 264px; }
+.panel-right { top: 16px; right: 56px; width: 336px; }
+
+.panel h2 { font-size: 13px; margin: 0 0 8px; letter-spacing: 0.04em; }
+.panel h3 {
+  font-size: 11px; margin: 14px 0 6px; color: var(--sn-muted);
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
+.panel h3.inline-h3 { margin: 0; }
+.panel, .panel * { overflow-wrap: break-word; }
+
+.row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.row label { color: var(--sn-muted); min-width: 60px; }
+.spread { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.push-top { margin-top: 10px; }
+.push-bottom { margin-bottom: 8px; }
+
+button {
+  font-family: var(--sn-mono);
+  font-size: 12px;
+  background: #212a24;
+  color: var(--sn-text);
+  border: 1px solid var(--sn-border);
+  border-radius: 4px;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--sn-accent); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button.active { border-color: var(--sn-accent); color: var(--sn-accent); }
+button.primary { background: #1d3227; border-color: var(--sn-accent); color: var(--sn-accent); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--sn-accent); outline-offset: 1px; }
+
+input[type="range"] { flex: 1; accent-color: var(--sn-accent); padding: 0; }
+
+.btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.btn-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+.mono-sm { font-size: 11px; color: var(--sn-muted); }
+.hint { font-size: 11px; color: var(--sn-muted); line-height: 1.5; margin: 4px 0; }
+.muted { color: var(--sn-muted); }
+.error-text, .entry-error { color: var(--sn-danger); }
+.warn-text { color: var(--sn-warn); }
+
+.error-banner {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 50;
+  background: var(--sn-danger); color: #fff; padding: 8px 14px; font-size: 12px;
+}
+.inline-retry { margin-left: 12px; }
+
+/* --- confidence badges --- */
+
+.badge {
+  display: inline-block; padding: 1px 6px; border-radius: 3px;
+  font-size: 10px; letter-spacing: 0.06em; border: 1px solid transparent;
+}
+.badge.auto-high { color: var(--sn-accent); border-color: #2c5c3e; }
+.badge.auto-low { color: var(--sn-warn); border-color: #5c4a20; }
+/* A human-corrected row reads as neither "trusted" nor "flagged". */
+.badge.manually-verified { color: var(--sn-verified); border-color: #2c4468; }
+
+/* --- before/after thumbnails --- */
+
+.thumbs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.thumbs figure { margin: 0; }
+.thumbs img {
+  width: 100%; height: 92px; object-fit: cover;
+  border: 1px solid var(--sn-border); border-radius: 4px; background: var(--sn-bg);
+}
+.thumbs figcaption { font-size: 10px; color: var(--sn-muted); margin-top: 3px; }
+.thumb-missing {
+  width: 100%; height: 92px; display: grid; place-items: center;
+  border: 1px dashed var(--sn-border); border-radius: 4px;
+  background: var(--sn-bg); color: var(--sn-muted); font-size: 10px;
+}
+
+/* --- history timeline / candidate lists --- */
+
+.timeline { list-style: none; margin: 0; padding: 0; }
+.timeline li {
+  padding: 5px 8px; border-left: 2px solid var(--sn-border); margin-left: 4px;
+  cursor: pointer; display: flex; justify-content: space-between;
+  gap: 8px; align-items: center;
+}
+.timeline li:hover:not(.static):not(.timeline-reality) { background: #1d241f; }
+.timeline li.current { border-left-color: var(--sn-accent); color: var(--sn-accent); }
+.timeline li.static, .timeline li.timeline-reality { cursor: default; }
+.timeline li.timeline-reality { border-left-style: dashed; }
+.timeline li > span:first-child { min-width: 0; }
+.timeline .badge { flex: 0 0 auto; white-space: nowrap; }
+.timeline.compact li { padding: 4px 6px; }
+
+.correction { outline: none; }
+
+/* --- entry pipeline (steps 01-02) --- */
+
+.entry-form { display: flex; gap: 6px; margin: 6px 0 8px; }
+.entry-form input {
+  flex: 1; min-width: 0; padding: 5px 7px;
+  border: 1px solid var(--sn-border); border-radius: 4px;
+  background: var(--sn-bg); color: var(--sn-text); font: inherit;
+}
+.entry-form input:focus-visible { outline: none; border-color: var(--sn-accent); }
 
 .entry-badge {
-  display: inline-block;
-  padding: 1px 5px;
-  border: 1px solid currentColor;
-  border-radius: 3px;
-  font-size: 10px;
-  letter-spacing: 0.04em;
+  display: inline-block; padding: 1px 5px; border: 1px solid currentColor;
+  border-radius: 3px; font-size: 10px; letter-spacing: 0.04em;
 }
+.entry-badge.auto-high { color: var(--sn-accent); }
+.entry-badge.auto-low { color: var(--sn-warn); }
 
-.entry-badge.auto-high {
-  color: var(--sn-accent);
-}
-
-.entry-badge.auto-low {
-  color: var(--sn-warn);
-}
-
-.entry-error {
-  color: var(--sn-danger);
-}
+.maplibregl-ctrl-attrib { font-size: 10px; }

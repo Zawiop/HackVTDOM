@@ -4,6 +4,48 @@ Integrated 2026-09-19 from three branches: `ajeet/foundation-entry-pipeline`,
 `arrush/ai-generation`, `rishik/persistence-map`. Each owner's notes are kept
 below, unedited except where the merge changed a fact.
 
+## Frontend consolidated to TypeScript (2026-09-19, latest change)
+
+The map half had been bridged into the TS app through a `MapShell.jsx` shim,
+which left the frontend half JavaScript and half TypeScript: two API clients
+(`lib/api.js` and `api/client.ts`), two stylesheets (`styles.css` and
+`index.css`), and `.jsx` components beside `.tsx` ones. That is now one
+TypeScript tree:
+
+- `MapShell.jsx` / `MapShell.d.ts` are gone; `App.tsx` composes the map and the
+  panels directly.
+- `lib/api.js` merged into `api/client.ts`, which now holds every endpoint —
+  geocode, footprint, generate-image, generate-mesh, and the persistence and
+  propagate calls. `ApiError` carries `status` and `path` so callers can branch.
+- `styles.css` merged into `index.css`; `main.tsx` imports one stylesheet.
+- All map, panel, correction and propagate components are `.tsx`; their tests
+  are `.ts`.
+- `types/contract.ts` matches the backend again: `Generation.id` and
+  `created_at` are non-null (every stored row has both), `placement` is
+  non-null, and `GenerationCreate`, `Correction`, `PropagateResponse` and
+  `PlacementOverrides` are declared.
+
+Two behaviours came with it:
+
+- **Clicking the map runs step 02 for that point**, which closes the
+  "click the map once step 12 lands" TODO. Clicking an *existing* building
+  selects it instead and deliberately does **not** fire an Overpass query —
+  Overpass is the most fragile dependency we have.
+- **Step 02's cached `neighbors` are passed straight into propagate**, so it
+  never re-fetches them.
+
+One CSS trap worth knowing: MapLibre's stylesheet sets
+`.maplibregl-map { position: relative }` on the same element as `.map-root`,
+and it is imported after `index.css`. An unqualified `.map-root` rule loses the
+cascade and the map collapses to **zero height** while still reporting full
+width — with no error anywhere. The rule is written `.app-shell .map-root` to
+win on specificity rather than depend on import order.
+
+Verified after the change: 77 backend tests, 19 frontend tests, clean
+`tsc -b && vite build`, and a browser pass over geocode, map-click footprint,
+3D placement, the correction loop and propagate.
+
+
 ## What actually works end to end
 
 | Step | Route | State |
@@ -599,50 +641,6 @@ included. OSM stays the default — no MapTiler key anywhere.
    buildings stand upright, at `roll: 0` they lie flat. Holds as long as step 07
    keeps emitting Y-up glTF. The left panel has a live axis-check slider if that
    ever changes. Meshes should also carry `NORMAL` or shading goes flat.
-
----
-
-## Merging with `ajeet/foundation-entry-pipeline` (checked 2026-09-19)
-
-I compared both branches. **The API contract matches — that was the big risk and
-it is retired.** Their `Generation` and `PlacementRecord` models use the same
-field names, the same `position: [lat, lng, z]` ordering, the same
-`confidence_state` values and the same `/api` prefix as mine. Their
-`routers/stubs.py` explicitly reserves `/generations` and `/propagate` for this
-work with a 501 and a pointer to files 10/11. Nothing needs renegotiating.
-
-What does conflict is **structure, not semantics**. 12 files exist on both
-branches:
-
-| Theirs | Mine | Note |
-| --- | --- | --- |
-| `backend/app/routers/` | `backend/app/routes/` | same idea, different name |
-| `backend/app/models/contracts.py` | `backend/app/models.py` | package vs module |
-| `backend/app/main.py` | `backend/app/main.py` | they mount explicitly, I auto-discover |
-| `frontend/src/**/*.tsx` (TypeScript) | `frontend/src/**/*.jsx` (JavaScript) | — |
-| `config.py`, `package.json`, `index.html`, `.env.example`, `.claude/launch.json`, `STATUS.md` | same | straight duplicates |
-
-**Recommended resolution — theirs wins on structure, mine slots in.** They built
-the skeleton deliberately, stubs and all, so the lower-friction direction is to
-adapt my modules into their layout rather than the reverse:
-
-1. Move `app/routes/generations.py` and `app/routes/propagate.py` into
-   `app/routers/`, delete `routers/stubs.py`'s `/generations` + `/propagate`
-   entries, and add two `include_router(..., prefix="/api")` lines to their
-   `main.py`. My auto-discovery in `main.py` is then redundant — drop it.
-2. Move my `models.py` classes into their `models/contracts.py`. The shapes
-   already agree; `GenerationCreate`, `Correction` and `propagated_from` are
-   additive.
-3. `app/store/` and `app/geo.py` are unique to me and conflict with nothing.
-   Their `services/geo_math.py` overlaps `app/geo.py` — keep one.
-4. Frontend: their `.tsx` and my `.jsx` coexist under one Vite config, but my
-   components should be ported to TypeScript to match. Merge the two
-   `package.json` dependency lists (they need mine: deck.gl, maplibre-gl,
-   loaders.gl).
-
-I have **not** done any of this — it edits their files, and the other two agents
-have not pushed yet, so the merge is better done once with everyone's work in
-hand.
 
 ---
 
