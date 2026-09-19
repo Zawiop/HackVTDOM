@@ -127,7 +127,46 @@ export interface GenerateMeshResult {
   elapsedMs: number;
 }
 
-/** Step 08 — placement transform */
+/** Step 08 — POST /api/placement */
+export interface PlacementRequest {
+  footprint: FootprintCandidate;
+  meshExtentsMeters: { width: number; depth: number; height?: number };
+  /** Reused from the step 02 response — step 08 must not re-query Overpass. */
+  neighbors?: FootprintCandidate[];
+  footprintConfidence?: ConfidenceState;
+}
+
+export interface ScoredRotationCandidate {
+  rotationDegrees: number;
+  offsetDegrees: number;
+  iou: number;
+  scale: number;
+}
+
+export interface PlacementCheck {
+  ok: boolean;
+  detail: string;
+}
+
+export interface PlacementResult {
+  rotationDegrees: number;
+  scale: number;
+  /** Only set when proportions disagree enough that uniform scale looks undersized. */
+  scaleXYZ: [number, number, number] | null;
+  /** [lat, lng, z] */
+  position: [number, number, number];
+  confidence: ConfidenceState;
+  /** Step 09 replays these as "try these alignments" buttons. */
+  scoredRotationCandidates: ScoredRotationCandidate[];
+  /** Keyed by check name, so step 09 knows which uncertainty it is showing. */
+  checks: Record<string, PlacementCheck>;
+  /** Footprint area as a share of its oriented bounding box; caps achievable IoU. */
+  rectangularity: number;
+  warnings: string[];
+  rotation_note: string;
+}
+
+/** Step 08 — the transform as persisted on a generation row. */
 export interface PlacementRecord {
   rotationDegrees: number;
   scale: number;

@@ -15,13 +15,13 @@ below, unedited except where the merge changed a fact.
 | 05 image edit | `POST /api/generate-image` | Done (Gemini → Kontext fallback) |
 | 06 mesh | `POST /api/generate-mesh` | Done (→ placeholder fallback) |
 | 07 normalize | `POST /api/mesh/normalize` | Done |
-| 08 placement transform | `POST /api/placement` | **Not built — 501** |
+| 08 placement transform | `POST /api/placement` | Done, IoU rotation search |
 | 09 correction | `PATCH /api/generations/{id}/correction` | Done |
 | 10 propagate | `POST /api/propagate` | Done (reads pre-baked rows) |
 | 11 persistence | `/api/generations`, `/api/history` | Done (Supabase or SQLite) |
 | 12 map render | frontend | Done |
 
-## The two real gaps
+## The remaining gap
 
 **Step 04 (World State presets) is not implemented.** The frontend sends raw
 `worldStatePrompt` text for every generation. `04-worldstate-prompts.md` says the
@@ -29,22 +29,67 @@ five presets must live server-side so output stays consistent across buildings a
 users, and that the frontend must not send raw prompt text for the preset path.
 Right now nothing enforces that.
 
-**Step 08 (placement transform) is not implemented, and this one is visible from
-the judges' seats.** It is the geometry core of the challenge — the IoU rotation
-search, proportion-preserving scale fit, collision check and ground alignment.
-Nothing computes a real transform, so rows are saved with `Placement`'s defaults.
+## Step 08 — how the transform is computed
 
-The practical consequence, verified in the browser: every seeded row has
-`scale: 1`, so each mesh renders as a roughly one-metre object. At the demo's
-zoom 17.2 that is about one pixel — **the map looks empty.** Correcting a single
-row to `scale: 40` via `PATCH /api/generations/{id}/correction` makes the mesh
-appear immediately, which confirms the renderer, the store and the correction
-loop are all fine and the transform is the only thing missing.
+`POST /api/placement` takes the chosen polygon and neighbours from step 02 plus
+the mesh's `normalization.extentsMeters` from step 07. No external calls; it never
+re-queries Overpass.
 
-Step 02 already returns everything step 08 needs: the chosen polygon,
-`footprintWidthMeters`/`footprintDepthMeters`, the longest-edge bearing, and the
-neighbour footprints for the collision test. Step 07's `normalization.extentsMeters`
-gives the mesh's own dimensions, so the scale fit does not need to parse the `.glb`.
+**The mesh footprint is modelled as its normalized width x depth rectangle**, not
+its true base outline. TripoSR-class meshes are single-image reconstructions with
+noisy bases, so a rectangle is both steadier and enough to rank four rotations
+against a real polygon. It also means the IoU search cannot tell a facade from its
+back: the 0/180 and 90/270 candidates score identically by construction. That is
+reported in `rotation_note`, and picking a facade is left to the human in step 09,
+which is where the spec already puts it.
+
+**Rotation** scores the longest-edge bearing at +0/90/180/270. All four are
+returned with their IoU and their own best scale, because step 09 replays them as
+"try these alignments" buttons.
+
+**The fit test is relative, not absolute.** A rectangle can never cover an L-shaped
+or bridged building, so the achievable IoU is capped by how rectangular the
+footprint is. The response carries `rectangularity` (polygon area over its oriented
+bounding box) and the rotation passes when the best candidate reaches 80% of that
+ceiling. A flat IoU threshold flagged Torgersen Hall — whose bridge over Alumni Mall
+caps it at 0.42 — even though its best rotation was 96% of everything achievable.
+Below 35% rectangularity the shape is too irregular for a rectangle to orient at
+all, and it goes straight to a human.
+
+**Scale** is uniform, fitted with `min()` so the mesh stays inside the real
+footprint, which also keeps the collision test honest. When proportions disagree by
+more than 30% the uniform factor still populates `scale` — proportion-preserving is
+the stated preference — and a non-uniform `scaleXYZ` is offered alongside it.
+**Step 12 currently renders `scale` only; read `scaleXYZ` when it is not null.**
+
+**Collision uses real polygon intersection, not axis-aligned bounding boxes.**
+File 08 says bounding box, but axis-aligned boxes around two diagonal buildings
+overlap heavily even when the buildings do not touch — on this campus that flagged
+almost everything, including a spurious 45% "overlap" for Torgersen. The placed
+mesh is a convex rectangle, so the true intersection is one clip away.
+
+**Every sub-check is reported separately** in `checks`, and one flag is never
+overwritten by a later clean check. An `auto-low` footprint from step 02 stays
+`auto-low` through placement.
+
+Verified against real buildings: Burruss Hall resolves to 137.07 deg at 86% of its
+achievable fit; Torgersen Hall to 142.16 deg at 96%.
+
+## Demo data now uses real coordinates
+
+The seeder previously placed rows at synthetic offsets from Burruss. Once step 08
+started matching against real OSM footprints those offsets resolved to whichever
+building was actually there — the row labelled "Williams Hall" was sitting on
+**Patton Hall**, and both "Newman Library" and "McBryde Hall" landed on **Holden
+Hall**. The fixtures are now the real geocoded coordinates.
+
+**One consequence to know before the pitch:** VT buildings are more than 100 m
+apart centre-to-centre, so Propagate only reveals anything at the 250 m radius —
+the 50 m and 100 m tiers are honestly empty. The synthetic offsets had been hiding
+this. Either demo at 250 m, or change step 10 to measure the radius edge-to-edge
+rather than centroid-to-centroid, which is arguably the more correct reading of
+"buildings within 50 m" for buildings that are themselves 100 m wide. That needs
+footprint polygons per row, which the `generations` table does not store today.
 
 ## Smaller things worth knowing
 

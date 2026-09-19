@@ -137,6 +137,60 @@ class NormalizeMeshResult(BaseModel):
     normalization: MeshNormalization
 
 
+# --- Step 08: placement transform ---
+
+
+class MeshExtents(BaseModel):
+    """Step 07's `normalization.extentsMeters`. Metres, after normalization."""
+
+    width: float = Field(..., gt=0)  # X, along the facade
+    depth: float = Field(..., gt=0)  # Z
+    height: Optional[float] = Field(default=None, gt=0)  # Y
+
+
+class PlacementRequest(BaseModel):
+    """Everything step 08 needs, all of it already computed by steps 02 and 07."""
+
+    footprint: "FootprintCandidate"
+    meshExtentsMeters: MeshExtents
+    # Reused from the step 02 response — step 08 must not re-query Overpass.
+    neighbors: List["FootprintCandidate"] = []
+    # Carried through so an ambiguous match in step 02 cannot be laundered into
+    # a confident placement here.
+    footprintConfidence: ConfidenceState = "auto-high"
+
+
+class ScoredRotationCandidate(BaseModel):
+    rotationDegrees: float
+    offsetDegrees: float
+    iou: float
+    scale: float
+
+
+class PlacementCheck(BaseModel):
+    ok: bool
+    detail: str
+
+
+class PlacementResult(BaseModel):
+    rotationDegrees: float
+    scale: float
+    # Present only when proportions disagree enough that uniform scaling looks
+    # undersized. Step 12 renders `scale`; read this when it is not null.
+    scaleXYZ: Optional[List[float]] = None
+    position: List[float]  # [lat, lng, z]
+    confidence: ConfidenceState
+    # Kept whole so step 09 can offer them as "try these alignments" buttons.
+    scoredRotationCandidates: List[ScoredRotationCandidate]
+    # Per-check so step 09 knows which uncertainty it is showing.
+    checks: Dict[str, PlacementCheck]
+    # Footprint area as a share of its oriented bounding box. Caps how high a
+    # rectangular mesh footprint can score, so the rotation test is judged against it.
+    rectangularity: float
+    warnings: List[str] = []
+    rotation_note: str = ""
+
+
 # --- Step 08 / 11: placement + persistence ---
 #
 # Field names deliberately mirror Procedura / Scorched Nebraska vocabulary

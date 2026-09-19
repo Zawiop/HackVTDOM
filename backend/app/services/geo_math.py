@@ -150,17 +150,22 @@ def oriented_extents_meters(
     ring = _open_ring(polygon)
     if not ring:
         return 0.0, 0.0
+    return oriented_extents_2d(to_local_meters(ring, polygon_centroid(ring)), bearing_degrees)
 
-    origin = polygon_centroid(ring)
-    local = to_local_meters(ring, origin)
+
+def oriented_extents_2d(points: Sequence[Point], bearing_degrees: float) -> Tuple[float, float]:
+    """Same measurement for points already in a flat 2D (east, north) metre frame."""
+    ring = _open_ring(points)
+    if not ring:
+        return 0.0, 0.0
 
     theta = math.radians(bearing_degrees)
     # Unit vector along the bearing, and its perpendicular.
     along_e, along_n = math.sin(theta), math.cos(theta)
     across_e, across_n = math.cos(theta), -math.sin(theta)
 
-    along = [p[0] * along_e + p[1] * along_n for p in local]
-    across = [p[0] * across_e + p[1] * across_n for p in local]
+    along = [p[0] * along_e + p[1] * along_n for p in ring]
+    across = [p[0] * across_e + p[1] * across_n for p in ring]
     return max(along) - min(along), max(across) - min(across)
 
 
@@ -175,6 +180,104 @@ def polygon_area_sq_meters(points: Sequence[Point]) -> float:
         x1, y1 = local[(i + 1) % len(local)]
         twice_area += x0 * y1 - x1 * y0
     return abs(twice_area) / 2.0
+
+
+def polygon_area_2d(points: Sequence[Point]) -> float:
+    """Shoelace area of a polygon already in a flat 2D (metre) frame."""
+    ring = _open_ring(points)
+    if len(ring) < 3:
+        return 0.0
+    twice = 0.0
+    for i in range(len(ring)):
+        x0, y0 = ring[i]
+        x1, y1 = ring[(i + 1) % len(ring)]
+        twice += x0 * y1 - x1 * y0
+    return abs(twice) / 2.0
+
+
+def as_counter_clockwise(points: Sequence[Point]) -> List[Point]:
+    ring = _open_ring(points)
+    twice = 0.0
+    for i in range(len(ring)):
+        x0, y0 = ring[i]
+        x1, y1 = ring[(i + 1) % len(ring)]
+        twice += x0 * y1 - x1 * y0
+    return ring if twice >= 0 else list(reversed(ring))
+
+
+def clip_polygon_convex(subject: Sequence[Point], clip: Sequence[Point]) -> List[Point]:
+    """Sutherland-Hodgman intersection. `subject` may be concave, `clip` must be convex.
+
+    Used for the step 08 IoU search: the mesh footprint is a rectangle (convex),
+    so the real OSM polygon can be clipped against it whatever shape it is.
+    """
+    output = _open_ring(subject)
+    clip_ring = as_counter_clockwise(clip)
+    if len(output) < 3 or len(clip_ring) < 3:
+        return []
+
+    for i in range(len(clip_ring)):
+        a = clip_ring[i]
+        b = clip_ring[(i + 1) % len(clip_ring)]
+        current, output = output, []
+        if not current:
+            break
+        for j in range(len(current)):
+            cur = current[j]
+            prev = current[j - 1]
+            cur_in = _left_of(cur, a, b)
+            prev_in = _left_of(prev, a, b)
+            if cur_in:
+                if not prev_in:
+                    output.append(_edge_intersection(prev, cur, a, b))
+                output.append(cur)
+            elif prev_in:
+                output.append(_edge_intersection(prev, cur, a, b))
+    return output
+
+
+def intersection_over_union(a: Sequence[Point], b: Sequence[Point]) -> float:
+    """IoU of two polygons in a flat 2D frame. `b` must be convex."""
+    area_a = polygon_area_2d(a)
+    area_b = polygon_area_2d(b)
+    if area_a <= 0 or area_b <= 0:
+        return 0.0
+    inter = polygon_area_2d(clip_polygon_convex(a, b))
+    union = area_a + area_b - inter
+    return inter / union if union > 0 else 0.0
+
+
+def oriented_rectangle(
+    center: Point, along_meters: float, across_meters: float, bearing_degrees: float
+) -> List[Point]:
+    """Rectangle in a flat 2D metre frame, `along_meters` long on `bearing_degrees`."""
+    theta = math.radians(bearing_degrees)
+    along = (math.sin(theta), math.cos(theta))
+    across = (math.cos(theta), -math.sin(theta))
+    half_a, half_c = along_meters / 2.0, across_meters / 2.0
+    corners = []
+    for sa, sc in ((1, 1), (1, -1), (-1, -1), (-1, 1)):
+        corners.append(
+            (
+                center[0] + sa * half_a * along[0] + sc * half_c * across[0],
+                center[1] + sa * half_a * along[1] + sc * half_c * across[1],
+            )
+        )
+    return corners
+
+
+def _left_of(p: Point, a: Point, b: Point) -> bool:
+    return (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]) >= 0
+
+
+def _edge_intersection(p: Point, q: Point, a: Point, b: Point) -> Point:
+    r = (q[0] - p[0], q[1] - p[1])
+    s = (b[0] - a[0], b[1] - a[1])
+    denom = r[0] * s[1] - r[1] * s[0]
+    if abs(denom) < 1e-12:
+        return q
+    t = ((a[0] - p[0]) * s[1] - (a[1] - p[1]) * s[0]) / denom
+    return (p[0] + t * r[0], p[1] + t * r[1])
 
 
 def bounding_box(points: Sequence[Point]) -> dict:

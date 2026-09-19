@@ -5,26 +5,51 @@ script writes the source building, its pre-baked neighbours, a multi-state
 history for the timeline, and one deliberately low-confidence row so the
 correction UI (step 09) has something real to fix.
 
-Coordinates are approximate Virginia Tech drillfield positions used only as
-demo fixtures — at runtime real coordinates come from steps 01/02.
+Coordinates are the real geocoded positions of these buildings, because step 08
+now matches each row against the actual OSM footprint at its coordinate — an
+approximate fixture silently resolves to whichever building is really there.
+
+One consequence to know before the pitch: VT buildings sit more than 100 m apart
+centre-to-centre, so Propagate only reveals anything at the 250 m radius. The
+50 m and 100 m tiers are honestly empty. Either demo at 250 m, or measure the
+radius edge-to-edge instead of centroid-to-centroid (see STATUS.md).
 
 Usage:  ./.venv/bin/python seed/seed_demo.py [--reset]
 """
 from __future__ import annotations
 
 import argparse
+import asyncio
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.config import settings                     # noqa: E402
-from app.services.geo import haversine_meters, offset_meters  # noqa: E402
+from app.services.geo import haversine_meters  # noqa: E402
+from app.services import footprint as footprint_service       # noqa: E402
+from app.services import placement as placement_service       # noqa: E402
 from app.models import GenerationCreate, Placement, ScoredRotation  # noqa: E402
 from app.store import build_store                    # noqa: E402
 
-BURRUSS = (37.22870, -80.42290)
+# Real coordinates, geocoded through step 01 (Nominatim) rather than guessed.
+# Synthetic offsets used to sit on whichever building happened to be there, so a
+# row labelled "Williams Hall" resolved to Patton Hall's footprint once step 08
+# started matching against real OSM polygons.
+BURRUSS = (37.22906, -80.42372)
 MESH = "/placeholder.glb"  # served from frontend/public until real meshes exist
+# frontend/public/placeholder.glb measures 10.0 x 6.6 m in its footprint plane
+# (Y is up). Step 08 scales this to whatever the real footprint turns out to be.
+MESH_WIDTH_M = 10.0
+MESH_DEPTH_M = 6.6
+# Distances from Burruss: Pamplin 105 m, Williams 141 m, McBryde 241 m.
+NEIGHBOURS = [
+    ("Pamplin Hall, Blacksburg, VA", 37.22864, -80.42478, 112.0, 1.1),
+    ("Williams Hall, Blacksburg, VA", 37.22788, -80.42430, 22.0, 0.9),
+    ("Newman Library, Blacksburg, VA", 37.22881, -80.41945, 78.0, 1.25),
+]
+MCBRYDE = (37.23059, -80.42179)        # 241 m — inside the 250 m radius
+LANE_STADIUM = (37.21989, -80.41800)   # 1.1 km — outside every radius
 PHOTO = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2b/Burruss_Hall.jpg/640px-Burruss_Hall.jpg"
 
 
@@ -43,14 +68,53 @@ def placement(lat, lng, rot=47.5, scale=1.0, confidence="auto-high"):
     )
 
 
-def row(address, lat, lng, world_state, *, rot=47.5, scale=1.0, confidence="auto-high"):
+def real_placement(lat, lng, confidence=None):
+    """Run step 08 against the building actually at this coordinate.
+
+    Returns None when Overpass is unreachable, so seeding still works offline —
+    the caller falls back to its hardcoded transform.
+    """
+    try:
+        fp = asyncio.run(footprint_service.lookup(lat, lng))
+    except footprint_service.FootprintUnavailable as exc:
+        print(f"    (overpass unavailable: {exc!s:.60} — using fallback transform)")
+        return None
+    if not fp.selected:
+        print(f"    (no footprint at {lat:.5f},{lng:.5f}: {fp.reason} — using fallback)")
+        return None
+
+    computed = placement_service.compute_placement(
+        polygon_lnglat=[(p[0], p[1]) for p in fp.selected.geometry],
+        base_bearing_degrees=fp.selected.rotationDegrees,
+        mesh_width_meters=MESH_WIDTH_M,
+        mesh_depth_meters=MESH_DEPTH_M,
+        neighbors_lnglat=[
+            [(p[0], p[1]) for p in n.geometry]
+            for n in fp.candidates + fp.neighbors
+            if n.osmId != fp.selected.osmId
+        ],
+        footprint_confidence=fp.confidence,
+    )
+    return Placement(
+        rotationDegrees=computed["rotationDegrees"],
+        scale=computed["scale"],
+        position=computed["position"],
+        confidence=confidence or computed["confidence"],
+        scoredRotationCandidates=[
+            ScoredRotation(**c) for c in computed["scoredRotationCandidates"]
+        ],
+    )
+
+
+def row(address, lat, lng, world_state, *, rot=47.5, scale=1.0,
+        confidence="auto-high", placement_override=None):
     return GenerationCreate(
         address=address, lat=lat, lng=lng,
         source_photo=PHOTO,
         artifact=PHOTO,
         mesh_url=MESH,
         world_state=world_state,
-        placement=placement(lat, lng, rot, scale, confidence),
+        placement=placement_override or placement(lat, lng, rot, scale, confidence),
     )
 
 
@@ -67,35 +131,44 @@ def main() -> int:
     print(f"seeding into: {store.backend_name}")
 
     # --- source building, plus its history sequence (step 11 timeline) ---
-    src = store.save_generation(row("Burruss Hall, Blacksburg, VA", *BURRUSS, "reclaimed"))
-    store.save_generation(row("Burruss Hall, Blacksburg, VA", *BURRUSS, "flooded", rot=47.5))
-    store.save_generation(row("Burruss Hall, Blacksburg, VA", *BURRUSS, "scorched", rot=47.5))
-    print(f"  source {src.id} + 2 more states (history = 3)")
+    # Transforms come from step 08 against the real OSM footprint, so the meshes
+    # land at building scale instead of the 1 m default.
+    burruss = real_placement(*BURRUSS)
+    src = store.save_generation(
+        row("Burruss Hall, Blacksburg, VA", *BURRUSS, "reclaimed", placement_override=burruss))
+    for state in ("flooded", "scorched"):
+        store.save_generation(
+            row("Burruss Hall, Blacksburg, VA", *BURRUSS, state, placement_override=burruss))
+    if burruss:
+        print(f"  source {src.id} + 2 more states (history = 3)"
+              f"  [step 08: {burruss.rotationDegrees}deg, scale {burruss.scale}]")
+    else:
+        print(f"  source {src.id} + 2 more states (history = 3)")
 
-    # --- pre-baked neighbours at known distances (step 10 reveal) ---
-    neighbours = [
-        ("Williams Hall, Blacksburg, VA", 40, 10, 22.0, 0.9),
-        ("Pamplin Hall, Blacksburg, VA", 85, -30, 112.0, 1.1),
-        ("Newman Library, Blacksburg, VA", 175, 60, 78.0, 1.25),
-    ]
-    for name, north, east, rot, scale in neighbours:
-        lat, lng = offset_meters(*BURRUSS, north, east)
-        g = store.save_generation(row(name, lat, lng, "reclaimed", rot=rot, scale=scale))
+    # --- pre-baked neighbours at real distances (step 10 reveal) ---
+    for name, lat, lng, rot, scale in NEIGHBOURS:
+        computed = real_placement(lat, lng)
+        g = store.save_generation(
+            row(name, lat, lng, "reclaimed", rot=rot, scale=scale, placement_override=computed))
         d = haversine_meters(*BURRUSS, lat, lng)
-        print(f"  neighbour {name.split(',')[0]:<16} {d:6.1f}m  {g.confidence_state}")
+        fit = f"  [{computed.rotationDegrees}deg, scale {computed.scale}]" if computed else ""
+        print(f"  neighbour {name.split(',')[0]:<16} {d:6.1f}m  {g.confidence_state}{fit}")
 
     # --- one deliberately low-confidence row: warning ring + correction UI ---
-    lat, lng = offset_meters(*BURRUSS, 120, 95)
+    lat, lng = MCBRYDE
+    # Forced auto-low whatever step 08 thinks — this row exists to demo step 09.
     low = store.save_generation(
         row("McBryde Hall, Blacksburg, VA", lat, lng, "reclaimed",
-            rot=15.0, scale=0.55, confidence="auto-low")
+            rot=15.0, scale=0.55, confidence="auto-low",
+            placement_override=real_placement(lat, lng, confidence="auto-low"))
     )
     print(f"  low-confidence  McBryde Hall     {haversine_meters(*BURRUSS, lat, lng):6.1f}m  "
           f"{low.confidence_state}  <- correction UI target")
 
     # --- outside every radius: proves the radius filter actually filters ---
-    lat, lng = offset_meters(*BURRUSS, 420, 0)
-    store.save_generation(row("Lane Stadium, Blacksburg, VA", lat, lng, "reclaimed", rot=0.0))
+    lat, lng = LANE_STADIUM
+    store.save_generation(row("Lane Stadium, Blacksburg, VA", lat, lng, "reclaimed",
+                              rot=0.0, placement_override=real_placement(lat, lng)))
     print(f"  far building    Lane Stadium     {haversine_meters(*BURRUSS, lat, lng):6.1f}m"
           f"  (outside 250m)")
 

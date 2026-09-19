@@ -11,7 +11,6 @@ router = APIRouter(tags=["not-implemented"])
 _OWNERS = {
     "/photo/mapillary": "03-photo-input.md",
     "/worldstates": "04-worldstate-prompts.md",
-    "/placement": "08-placement-transform.md",
 }
 
 
@@ -35,9 +34,3 @@ async def world_states():
     04-worldstate-prompts.md says must not happen for the five presets."""
     _pending("/worldstates")
 
-
-@router.post("/placement")
-async def compute_placement():
-    """Step 08 — the rotation/scale/ground-alignment core. Nothing computes a
-    real transform yet, so rows are written with step 08's defaults."""
-    _pending("/placement")
