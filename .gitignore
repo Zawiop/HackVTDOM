@@ -1,0 +1,48 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*.env
+backend/.env
+frontend/.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+build/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Logs / caches
+*.log
+.cache/
+
+# Model weights / generated assets
+*.ckpt
+*.safetensors
+*.pt
+*.pth
+output/
+outputs/
+tmp/
