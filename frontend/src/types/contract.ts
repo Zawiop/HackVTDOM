@@ -127,14 +127,148 @@ export interface GenerateMeshResult {
   elapsedMs: number;
 }
 
+/** Step 08 — one scored candidate from the IoU rotation search. */
+export interface ScoredRotation {
+  /** Offset from the footprint's principal axis: 0, 90, 180 or 270. */
+  offsetDegrees: number;
+  /** deck.gl yaw, ready for getOrientation. */
+  rotationDegrees: number;
+  iou: number;
+  intersectionAreaSqM: number;
+  scale: number;
+  /** Fraction of the footprint's length/width the scaled mesh covers. */
+  coverage: [number, number];
+}
+
+/**
+ * Step 08 — why a placement is or is not trusted.
+ *
+ * `severity` matters: `low` moves the record to auto-low, `info` is recorded but
+ * does not. A signal that fires on every building tells step 09 nothing, and the
+ * single-view depth shortfall fires on every real mesh.
+ */
+export interface PlacementFlag {
+  subStep: "footprint" | "rotation" | "scale" | "collision" | "ground" | "mesh";
+  code: string;
+  message: string;
+  severity: "low" | "info";
+}
+
 /** Step 08 — placement transform */
 export interface PlacementRecord {
+  /**
+   * deck.gl yaw, fed straight into getOrientation as [0, yaw, 90].
+   * Facade compass bearing = 180 - yaw.
+   */
   rotationDegrees: number;
+  /** Uniform fit factor, and the baseline for the non-uniform fallback. */
   scale: number;
   /** [lat, lng, z] */
   position: [number, number, number];
   confidence: ConfidenceState;
-  scoredRotationCandidates: { rotationDegrees: number; iou: number }[];
+  scoredRotationCandidates: ScoredRotation[];
+
+  /** Everything below is added by step 08 and read by step 09. */
+  scaleMode?: "uniform" | "non-uniform";
+  /**
+   * Per-axis scale in model order (X, Y, Z). Present when the plan had to be
+   * stretched to fit the footprint — a mesh from one photograph under-guesses
+   * depth, so this is the common case, not the exception.
+   */
+  scaleXYZ?: [number, number, number];
+  scaleStretchRatio?: number;
+  flags?: PlacementFlag[];
+  collision?: {
+    neighborsChecked: number;
+    overlaps: {
+      neighborId: number | string | null;
+      overlapAreaSqM: number;
+      overlapRatio: number;
+      overlapRatioOfMesh: number;
+      overlapRatioOfNeighbor: number;
+    }[];
+    worstOverlapRatio: number;
+  };
+  ground?: { meshBaseOffsetUnits: number; z: number };
+  diagnostics?: {
+    iou: number;
+    /** The best IoU any convex mesh outline could score against this polygon. */
+    maxAchievableIou: number;
+    /** `iou / maxAchievableIou` — what the confidence check actually judges. */
+    fitQuality: number;
+    footprintAreaSqM: number;
+    placedMeshAreaSqM: number;
+    footprintPrincipalAxisDegrees: number;
+    footprintLengthMeters: number;
+    footprintWidthMeters: number;
+    meshPrincipalAxisDegrees: number;
+    meshWidthUnits: number;
+    meshDepthUnits: number;
+    meshHeightUnits: number;
+    scaledHeightMeters: number;
+    upAxis: "y" | "z";
+    headingDegrees: number;
+    /** How much better the winner scores than its own 180° flip. Near zero. */
+    rotationFlipMargin: number | null;
+    refinementShiftMeters: number;
+    footprintDerivedMismatch:
+      | { field: string; reported: number; computed: number }[]
+      | null;
+  };
+}
+
+/**
+ * Step 04 — one World State on the Present ↔ Collapsed spectrum.
+ *
+ * Note what is absent: the prompt text. The five locked strings stay
+ * server-side, so the browser has nothing to echo back.
+ */
+export interface WorldStateOption {
+  id: WorldState;
+  label: string;
+  blurb: string;
+  /** 0 = nearest the present, 1 = furthest collapsed. Orders the spectrum. */
+  spectrumPosition: number;
+}
+
+export interface WorldStateListResponse {
+  states: WorldStateOption[];
+  order: WorldState[];
+  spectrum: { from: string; to: string };
+}
+
+/** What the browser sends: an enum, or the user's own words. Never a preset. */
+export interface WorldStateSelection {
+  worldState: WorldState | null;
+  /** When non-empty this REPLACES the preset — it is never appended to it. */
+  freeformOverride: string | null;
+}
+
+export interface WorldStatePrompt {
+  prompt: string;
+  source: "preset" | "override";
+  worldState: WorldState | null;
+}
+
+/** Step 03 path B — a nearby street-level capture. */
+export interface MapillaryPhoto {
+  source: "mapillary";
+  id: string;
+  url: string;
+  mimeType: string;
+  /** Epoch milliseconds, not seconds. */
+  capturedAt: number | null;
+  location: { lat: number; lng: number } | null;
+  distanceMeters: number | null;
+}
+
+export interface MapillaryLookup {
+  attempted: boolean;
+  photos: MapillaryPhoto[];
+  attempts: number;
+  bbox?: string;
+  /** Zero photos is the expected common case, never an error state. */
+  requiresManualUpload: boolean;
 }
 
 /** Step 11 — one row per generation, never one per address. */

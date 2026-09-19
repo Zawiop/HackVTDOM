@@ -11,8 +11,11 @@ from .routers import (
     generations,
     geocode,
     health,
+    photo,
+    placement,
     propagate,
     stubs,
+    worldstates,
 )
 
 logging.basicConfig(
@@ -53,6 +56,9 @@ app.add_middleware(
 app.include_router(health.router, prefix="/api")
 app.include_router(geocode.router, prefix="/api")
 app.include_router(footprint.router, prefix="/api")
+app.include_router(photo.router, prefix="/api")
+app.include_router(worldstates.router, prefix="/api")
+app.include_router(placement.router, prefix="/api")
 app.include_router(generation.router, prefix="/api")
 # These two declare their own /api prefix.
 app.include_router(generations.router)

@@ -92,6 +92,29 @@ All 32 real VT footprints, each placed against a mesh built from itself and chec
 real neighbours: **32/32 `auto-high`, zero flags.** Before the two corrections above, 44% were
 `auto-low` on the flip and a further batch on phantom bounding-box collisions.
 
+### The mesh frame is a rotation, not a mirror
+
+glTF is right-handed, so with Y up the geographic mapping must be **east = +X,
+north = -Z**. Mapping north to +Z reflects the mesh. Verified on real Burruss Hall
+data by extruding the real footprint into a mesh in step 07's convention: with
+north = -Z the transform is recovered exactly at every angle (scale 1.0000, fit
+quality 0.9998); with north = +Z it is off by 85 degrees and reports a fit quality
+of **1.0075** -- impossible, since fit quality is IoU over the best a convex
+outline can score, and the tell that the shape being compared is reflected.
+
+Note that a plain IoU comparison does **not** catch this: on a near-rectangular
+building the mirrored version scored *higher* (0.79 vs 0.74).
+
+### Flags carry a severity
+
+Measured on the real sample meshes, the single-view depth shortfall triggers the
+non-uniform fallback **100% of the time** -- guessing depth from one photograph is
+what step 06 does, not an anomaly. A confidence signal that fires on every
+building tells step 09 nothing, so flags are `low` (moves the record to
+`auto-low`) or `info` (recorded only). The scale fallback is `info` below 2.5x
+aspect distortion; correcting a non-base-centred pivot is `info` because the
+correction is exact.
+
 ### Note for step 12
 `scaleXYZ` assumes deck.gl's ScenegraphLayer order — **scale in model space, then rotate, then
 translate**. The IoU search mirrors that order exactly, so a score computed here is the score you see

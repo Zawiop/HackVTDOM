@@ -55,11 +55,8 @@ tmp/
 
 !**/placeholder.glb
 
-# Local upload staging (moves to Supabase storage in step 11)
-backend/uploads/
-
 # TS incremental build info
 *.tsbuildinfo
 
-# Local placement debug render (npm run preview)
+# Local placement debug render (scripts/placement_preview.py)
 backend/placement-preview.html

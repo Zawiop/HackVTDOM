@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     overpass_backoff_seconds: float = 30.0
     overpass_timeout_seconds: float = 25.0
     # Match radius for "which building is this", and the wider pull reused by steps 08/10.
+    # --- Step 03: Mapillary (free; the token is registration, not billing) ---
+    # Absent token simply disables the auto-fetch convenience layer; manual
+    # upload is the required path and never depends on this.
+    mapillary_access_token: str = ""
+
     overpass_match_radius_meters: int = 50
     overpass_neighbor_radius_meters: int = 250
 

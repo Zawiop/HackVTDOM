@@ -52,6 +52,21 @@ describe('scaleFor', () => {
     expect(scaleFor({ placement: {} })).toEqual([1, 1, 1])
     expect(scaleFor({ placement: { scale: 0 } })).toEqual([1, 1, 1])
   })
+
+  it('uses the per-axis scale when step 08 had to stretch the plan', () => {
+    // A mesh from one photograph under-guesses depth, so step 08 stretches Z to
+    // fill the footprint. Rendering the uniform factor alone leaves the building
+    // visibly too shallow — both real sample meshes hit this path.
+    expect(
+      scaleFor({ placement: { scale: 1.14, scaleXYZ: [1.14, 1.14, 2.03] } }),
+    ).toEqual([1.14, 1.14, 2.03])
+  })
+
+  it('falls back to the scalar for rows written before step 08 landed', () => {
+    expect(scaleFor({ placement: { scale: 1.8, scaleXYZ: null } })).toEqual([1.8, 1.8, 1.8])
+    expect(scaleFor({ placement: { scale: 1.8, scaleXYZ: [1.1, 0, 2] } })).toEqual([1.8, 1.8, 1.8])
+    expect(scaleFor({ placement: { scale: 1.8, scaleXYZ: [1.1, 2] } })).toEqual([1.8, 1.8, 1.8])
+  })
 })
 
 describe('groupByMesh', () => {

@@ -1,6 +1,11 @@
 import { useEffect, useId, useState } from 'react';
-import { fetchWorldStates } from '../lib/api';
-import type { WorldState, WorldStateOption, WorldStateSelection } from '../types/api';
+import { fetchWorldStates } from '../api/client';
+import type {
+  WorldState,
+  WorldStateListResponse,
+  WorldStateOption,
+  WorldStateSelection,
+} from '../types/contract';
 
 /**
  * World State selector (spec 04).
@@ -17,7 +22,7 @@ import type { WorldState, WorldStateOption, WorldStateSelection } from '../types
 export interface WorldStateSelectorProps {
   onChange?: (selection: WorldStateSelection) => void;
   /** Injected in tests so the component doesn't need the network. */
-  loadStates?: () => Promise<{ states: WorldStateOption[]; spectrum: { from: string; to: string } }>;
+  loadStates?: () => Promise<Pick<WorldStateListResponse, 'states' | 'spectrum'>>;
 }
 
 export function WorldStateSelector({ onChange, loadStates }: WorldStateSelectorProps) {
@@ -112,3 +117,5 @@ export function WorldStateSelector({ onChange, loadStates }: WorldStateSelectorP
     </section>
   );
 }
+
+export default WorldStateSelector;

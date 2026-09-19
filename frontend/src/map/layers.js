@@ -22,8 +22,25 @@ export function orientationFor(row, rollOverride = UP_AXIS_ROLL) {
   return [0, yaw, rollOverride]
 }
 
+/**
+ * Step 08 returns a uniform `scale` and, when it had to stretch the plan to fit
+ * the footprint, a per-axis `scaleXYZ` in model order (X, Y, Z).
+ *
+ * Both real sample meshes need the per-axis form: a mesh reconstructed from one
+ * photograph under-guesses depth by roughly half, so rendering the uniform
+ * factor alone leaves the building visibly too shallow on its own footprint.
+ * Falls back to the scalar whenever `scaleXYZ` is absent or malformed, so rows
+ * written before step 08 landed still render exactly as they did.
+ */
 export function scaleFor(row) {
   const s = Number(row?.placement?.scale ?? 1) || 1
+
+  const xyz = row?.placement?.scaleXYZ
+  if (Array.isArray(xyz) && xyz.length === 3) {
+    const axes = xyz.map((v) => Number(v))
+    if (axes.every((v) => Number.isFinite(v) && v > 0)) return axes
+  }
+
   return [s, s, s]
 }
 

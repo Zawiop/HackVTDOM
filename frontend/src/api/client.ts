@@ -1,8 +1,14 @@
 import type {
+  FootprintCandidate,
   FootprintResult,
   GenerateImageResult,
   GenerateMeshResult,
   GeocodeResult,
+  MapillaryLookup,
+  PlacementRecord,
+  WorldStateListResponse,
+  WorldStatePrompt,
+  WorldStateSelection,
 } from "../types/contract";
 
 // Empty by default so requests go through Vite's /api proxy — no CORS in dev.
@@ -77,6 +83,65 @@ export function generateMesh(
   return request<GenerateMeshResult>("/api/generate-mesh", {
     method: "POST",
     body: JSON.stringify({ imageUrl, ...footprint }),
+    signal,
+  });
+}
+
+
+/**
+ * Step 03 path B. Optional convenience layer on top of the required manual
+ * upload, so the user can skip uploading where there is street-level coverage.
+ *
+ * Always resolves. Zero photos is the expected common case for most addresses —
+ * check `requiresManualUpload` and show nothing rather than an error.
+ */
+export function lookupMapillary(lat: number, lng: number, signal?: AbortSignal) {
+  return request<MapillaryLookup>(
+    `/api/photo/mapillary?lat=${lat}&lng=${lng}`,
+    { signal },
+  );
+}
+
+/** Step 04. Labels and blurbs for the spectrum UI — never the prompt text. */
+export function fetchWorldStates(signal?: AbortSignal) {
+  return request<WorldStateListResponse>("/api/worldstates", { signal });
+}
+
+/**
+ * Step 04. Turn a selection into the string step 05 sends to the image model.
+ *
+ * The body carries an enum and, optionally, the user's own words — never a
+ * preset prompt string. That is the whole reason the five locked paragraphs
+ * live on the server: output stays consistent across every building and user.
+ */
+export function resolveWorldStatePrompt(
+  selection: WorldStateSelection,
+  signal?: AbortSignal,
+) {
+  return request<WorldStatePrompt>("/api/worldstates/resolve", {
+    method: "POST",
+    body: JSON.stringify(selection),
+    signal,
+  });
+}
+
+/**
+ * Step 08. Pass step 02's chosen polygon *and* the neighbours it already
+ * fetched — placement reuses them for the collision test and must never trigger
+ * a second Overpass call.
+ */
+export function computePlacement(
+  footprint: {
+    polygon: FootprintCandidate;
+    neighbors?: FootprintCandidate[];
+    confidence?: string;
+  },
+  mesh: { meshUrl?: string; path?: string; upAxis?: "y" | "z" },
+  signal?: AbortSignal,
+) {
+  return request<PlacementRecord>("/api/placement", {
+    method: "POST",
+    body: JSON.stringify({ footprint, mesh }),
     signal,
   });
 }

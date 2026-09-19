@@ -1,16 +1,16 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { PhotoInput } from '../src/components/PhotoInput';
-import { WorldStateSelector } from '../src/components/WorldStateSelector';
-import type { WorldStateOption } from '../src/types/api';
+import { PhotoInput } from '../src/photo/PhotoInput';
+import { WorldStateSelector } from '../src/worldstate/WorldStateSelector';
+import type { WorldStateOption } from '../src/types/contract';
 
 const png = (name: string) =>
   new File([new Uint8Array([137, 80, 78, 71])], name, { type: 'image/png' });
 
 beforeEach(() => {
   // No component under test should need the network unless it says so.
-  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ photos: [] }))));
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ attempted: true, photos: [], attempts: 3, requiresManualUpload: true }))));
 });
 
 describe('PhotoInput — spec 03 path A', () => {
@@ -102,13 +102,19 @@ describe('PhotoInput — spec 03 path B (convenience layer)', () => {
       vi.fn(async () =>
         new Response(
           JSON.stringify({
+            attempted: true,
+            attempts: 1,
+            requiresManualUpload: false,
             photos: [
               {
                 source: 'mapillary',
                 id: '1137417950117930',
                 url: 'https://example.test/a.jpg',
+                mimeType: 'image/jpeg',
+                location: { lat: 37.228, lng: -80.423 },
                 distanceMeters: 23.1,
-                capturedAt: '2024-10-11T00:00:00.000Z',
+                // Epoch milliseconds, matching the backend contract.
+                capturedAt: 1728604800000,
               },
             ],
           }),
@@ -122,7 +128,7 @@ describe('PhotoInput — spec 03 path B (convenience layer)', () => {
   });
 
   it('renders NO error state when there is no coverage — it just shows nothing', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ photos: [] }))));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ attempted: true, photos: [], attempts: 3, requiresManualUpload: true }))));
 
     render(<PhotoInput lat={47.7} lng={-87.5} />);
     await waitFor(() => expect(screen.queryByText(/checking for/i)).toBeNull());

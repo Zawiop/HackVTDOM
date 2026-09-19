@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { lookupMapillary } from '../lib/api';
-import type { PhotoConstraints, SourcePhoto } from '../types/api';
+import { lookupMapillary } from '../api/client';
+import type { MapillaryPhoto } from '../types/contract';
+
+/** Upload limits. The backend's own multipart handler is the real gate. */
+export interface PhotoConstraints {
+  maxFiles: number;
+  maxFileBytes: number;
+  acceptedMimeTypes: string[];
+  multiple: boolean;
+}
 
 /**
  * Photo input (spec 03).
@@ -27,7 +35,7 @@ export interface PhotoInputProps {
   lng?: number;
   constraints?: PhotoConstraints;
   /** Fires whenever the chosen set changes. Files are uploaded on submit. */
-  onChange?: (selection: { files: File[]; mapillary: SourcePhoto | null }) => void;
+  onChange?: (selection: { files: File[]; mapillary: MapillaryPhoto | null }) => void;
 }
 
 interface Preview {
@@ -49,8 +57,8 @@ export function PhotoInput({ lat, lng, constraints, onChange }: PhotoInputProps)
 
   const [previews, setPreviews] = useState<Preview[]>([]);
   const [rejected, setRejected] = useState<string[]>([]);
-  const [suggestions, setSuggestions] = useState<SourcePhoto[]>([]);
-  const [chosenSuggestion, setChosenSuggestion] = useState<SourcePhoto | null>(null);
+  const [suggestions, setSuggestions] = useState<MapillaryPhoto[]>([]);
+  const [chosenSuggestion, setChosenSuggestion] = useState<MapillaryPhoto | null>(null);
   const [lookingUp, setLookingUp] = useState(false);
 
   // Revoke object URLs on unmount so previews don't leak.
@@ -67,7 +75,7 @@ export function PhotoInput({ lat, lng, constraints, onChange }: PhotoInputProps)
     const controller = new AbortController();
     setLookingUp(true);
     lookupMapillary(lat, lng, controller.signal)
-      .then(setSuggestions)
+      .then((result) => setSuggestions(result.photos))
       .catch(() => setSuggestions([]))
       .finally(() => setLookingUp(false));
     return () => controller.abort();
@@ -199,13 +207,16 @@ export function PhotoInput({ lat, lng, constraints, onChange }: PhotoInputProps)
                   type="button"
                   aria-pressed={chosenSuggestion?.id === s.id}
                   onClick={() =>
-                    setChosenSuggestion((cur) => (cur?.id === s.id ? null : s))
+                    setChosenSuggestion((cur: MapillaryPhoto | null) =>
+                      cur?.id === s.id ? null : s,
+                    )
                   }
                 >
                   <img src={s.url} alt={`Street-level capture ${s.id}`} loading="lazy" />
                   <span className="photo-input__meta">
-                    {s.distanceMeters !== undefined && `${Math.round(s.distanceMeters)} m away`}
-                    {s.capturedAt && ` · ${s.capturedAt.slice(0, 10)}`}
+                    {s.distanceMeters !== null && `${Math.round(s.distanceMeters)} m away`}
+                    {s.capturedAt !== null &&
+                      ` · ${new Date(s.capturedAt).toISOString().slice(0, 10)}`}
                   </span>
                 </button>
               </li>
@@ -222,3 +233,5 @@ export function PhotoInput({ lat, lng, constraints, onChange }: PhotoInputProps)
     </section>
   );
 }
+
+export default PhotoInput;
