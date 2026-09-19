@@ -132,6 +132,50 @@ included. OSM stays the default — no MapTiler key anywhere.
 
 ---
 
+## Merging with `ajeet/foundation-entry-pipeline` (checked 2026-09-19)
+
+I compared both branches. **The API contract matches — that was the big risk and
+it is retired.** Their `Generation` and `PlacementRecord` models use the same
+field names, the same `position: [lat, lng, z]` ordering, the same
+`confidence_state` values and the same `/api` prefix as mine. Their
+`routers/stubs.py` explicitly reserves `/generations` and `/propagate` for this
+work with a 501 and a pointer to files 10/11. Nothing needs renegotiating.
+
+What does conflict is **structure, not semantics**. 12 files exist on both
+branches:
+
+| Theirs | Mine | Note |
+| --- | --- | --- |
+| `backend/app/routers/` | `backend/app/routes/` | same idea, different name |
+| `backend/app/models/contracts.py` | `backend/app/models.py` | package vs module |
+| `backend/app/main.py` | `backend/app/main.py` | they mount explicitly, I auto-discover |
+| `frontend/src/**/*.tsx` (TypeScript) | `frontend/src/**/*.jsx` (JavaScript) | — |
+| `config.py`, `package.json`, `index.html`, `.env.example`, `.claude/launch.json`, `STATUS.md` | same | straight duplicates |
+
+**Recommended resolution — theirs wins on structure, mine slots in.** They built
+the skeleton deliberately, stubs and all, so the lower-friction direction is to
+adapt my modules into their layout rather than the reverse:
+
+1. Move `app/routes/generations.py` and `app/routes/propagate.py` into
+   `app/routers/`, delete `routers/stubs.py`'s `/generations` + `/propagate`
+   entries, and add two `include_router(..., prefix="/api")` lines to their
+   `main.py`. My auto-discovery in `main.py` is then redundant — drop it.
+2. Move my `models.py` classes into their `models/contracts.py`. The shapes
+   already agree; `GenerationCreate`, `Correction` and `propagated_from` are
+   additive.
+3. `app/store/` and `app/geo.py` are unique to me and conflict with nothing.
+   Their `services/geo_math.py` overlaps `app/geo.py` — keep one.
+4. Frontend: their `.tsx` and my `.jsx` coexist under one Vite config, but my
+   components should be ported to TypeScript to match. Merge the two
+   `package.json` dependency lists (they need mine: deck.gl, maplibre-gl,
+   loaders.gl).
+
+I have **not** done any of this — it edits their files, and the other two agents
+have not pushed yet, so the merge is better done once with everyone's work in
+hand.
+
+---
+
 ## Running it
 
 ```bash
