@@ -90,6 +90,51 @@ allowance. The route fails loud with 502, `retryable: true` and per-provider
 attempts, and the UI offers a retry. Budget this before judging — generate the
 demo images early and let them cache.
 
+## The demo is pre-baked and no longer needs any provider
+
+`seed/prebake_demo.py` runs the real pipeline end to end for the hero building —
+footprint (02), image (05), mesh (06+07), placement (08), persistence (11) — and
+writes the artifacts into `outputs/` so they are served from disk afterwards.
+
+```bash
+cd backend
+./.venv/bin/python seed/prebake_demo.py --reset   # hero building, real artifacts
+./.venv/bin/python seed/seed_demo.py              # neighbours + the flagged row
+```
+
+Order matters: prebake owns Burruss, seed owns the supporting cast. Seeding a
+placeholder Burruss at the same coordinate buries the real mesh under a 100 m
+grey box, which is what happened the first time.
+
+`--live` calls the providers and falls back to the captured artifact per step,
+reporting which is which. Without it the script uses the real outputs committed
+under `assets/samples/` — those came out of the live pipeline unmodified, so the
+rows are genuine end-to-end output, just not generated on this run.
+
+**Verified end to end:** Burruss Hall renders as the real textured SF3D mesh on
+its real OSM footprint at rotation 137.07 deg, scale 1.0001, with the before/after
+pair and a two-state history in the click panel. Step 08 coming out at scale ~1.0
+is an independent cross-check: step 07 sizes the mesh to the footprint's longest
+side, and `assets/samples/README.md` predicted "step 08's uniform scale should
+come out ~1" before step 08 existed.
+
+## About API keys
+
+**A new free Gemini key will not help.** Google returns `limit: 0` for
+`gemini-2.5-flash-image`, which is a quota allotment of zero on the free tier
+rather than a rate limit that resets — any other free key hits the same wall.
+Only a billing-enabled key changes it.
+
+**A new Hugging Face token will help.** The Kontext failure is a ZeroGPU *runs*
+limit, which is per-account and resets daily; a different account or HF PRO gets
+fresh quota. This is the cheaper fix, and mesh generation (SF3D) draws on the
+same pool.
+
+Swapping either is `.env` plus a restart — no code change. Note `PROVIDER_COOLDOWN_S`
+is 600 s and held in memory, so after a quota failure a provider is skipped for ten
+minutes; restart the server to clear it or you will see `skipped: true` and think
+the new key failed.
+
 ## Step 08 — how the transform is computed
 
 `POST /api/placement` takes the chosen polygon and neighbours from step 02 plus
@@ -116,6 +161,16 @@ ceiling. A flat IoU threshold flagged Torgersen Hall — whose bridge over Alumn
 caps it at 0.42 — even though its best rotation was 96% of everything achievable.
 Below 35% rectangularity the shape is too irregular for a rectangle to orient at
 all, and it goes straight to a human.
+
+**Two thresholds were retuned against real captured output**, because the first
+versions flagged every genuine mesh. The rotation ceiling now accounts for the
+mesh's area as well as the footprint's shape: SF3D's Burruss mesh covers only 62%
+of the real polygon, so no rotation could ever reach the old ceiling and a
+correctly-oriented mesh was being flagged. And a depth shortfall under 65% is now
+a hint carrying `scaleXYZ` rather than a failure — single-photo reconstruction
+systematically under-reads depth, which step 07's own notes call the least
+reliable number, so flagging it made the flag meaningless. Past 65% it is still
+flagged, as a likely units problem.
 
 **Scale** is uniform, fitted with `min()` so the mesh stays inside the real
 footprint, which also keeps the collision test honest. When proportions disagree by

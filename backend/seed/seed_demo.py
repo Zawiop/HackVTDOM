@@ -1,9 +1,14 @@
-"""Pre-bake demo rows so Propagate is an instant reveal during judging.
+"""Pre-bake the supporting cast so Propagate is an instant reveal during judging.
 
 Step 10 is explicit: do NOT generate neighbours live in front of judges. This
-script writes the source building, its pre-baked neighbours, a multi-state
-history for the timeline, and one deliberately low-confidence row so the
-correction UI (step 09) has something real to fix.
+script writes the pre-baked neighbours and one deliberately low-confidence row so
+the correction UI (step 09) has something real to fix.
+
+Burruss itself — the hero building, with its real generated image, real mesh and
+multi-state history — comes from `seed/prebake_demo.py`. Run that first:
+
+    ./.venv/bin/python seed/prebake_demo.py --reset
+    ./.venv/bin/python seed/seed_demo.py
 
 Coordinates are the real geocoded positions of these buildings, because step 08
 now matches each row against the actual OSM footprint at its coordinate — an
@@ -130,20 +135,9 @@ def main() -> int:
     store = build_store(settings)
     print(f"seeding into: {store.backend_name}")
 
-    # --- source building, plus its history sequence (step 11 timeline) ---
-    # Transforms come from step 08 against the real OSM footprint, so the meshes
-    # land at building scale instead of the 1 m default.
-    burruss = real_placement(*BURRUSS)
-    src = store.save_generation(
-        row("Burruss Hall, Blacksburg, VA", *BURRUSS, "reclaimed", placement_override=burruss))
-    for state in ("flooded", "scorched"):
-        store.save_generation(
-            row("Burruss Hall, Blacksburg, VA", *BURRUSS, state, placement_override=burruss))
-    if burruss:
-        print(f"  source {src.id} + 2 more states (history = 3)"
-              f"  [step 08: {burruss.rotationDegrees}deg, scale {burruss.scale}]")
-    else:
-        print(f"  source {src.id} + 2 more states (history = 3)")
+    # Burruss itself is the hero building and belongs to prebake_demo.py, which
+    # gives it the real generated image and mesh. Seeding a placeholder copy at the
+    # same coordinate would bury those under a 100 m grey box.
 
     # --- pre-baked neighbours at real distances (step 10 reveal) ---
     for name, lat, lng, rot, scale in NEIGHBOURS:
@@ -172,9 +166,13 @@ def main() -> int:
     print(f"  far building    Lane Stadium     {haversine_meters(*BURRUSS, lat, lng):6.1f}m"
           f"  (outside 250m)")
 
-    total = len(store.list_generations())
-    print(f"\nseeded. total rows: {total}")
-    print(f"source id for Propagate: {src.id}")
+    rows = store.list_generations()
+    hero = next((r for r in rows if r.address.startswith("Burruss")), None)
+    print(f"\nseeded {len(rows)} rows total.")
+    if hero:
+        print(f"source id for Propagate: {hero.id}")
+    else:
+        print("No Burruss row yet — run seed/prebake_demo.py for the hero building.")
     return 0
 
 

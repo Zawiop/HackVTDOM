@@ -26,9 +26,14 @@ MIN_FIT_QUALITY = 0.80
 MIN_RECTANGULARITY = 0.35
 # Two orientations this close are a coin flip — a near-square building.
 ROTATION_AMBIGUITY_MARGIN = 0.05
-# Uniform scaling leaving the mesh more than this much short on the free axis
-# is "badly undersized" (08-placement-transform.md asks for a concrete number).
-MAX_UNIFORM_SHORTFALL = 0.30
+# Past this shortfall on the free axis, `scaleXYZ` carries a non-uniform fit
+# alongside the uniform one (08-placement-transform.md asks for a concrete number).
+SCALE_STRETCH_HINT = 0.30
+# Only past *this* is the fit actually wrong. Single-photo reconstruction
+# systematically under-reads depth — step 07's own notes call it the least
+# reliable number — so a moderate shortfall is expected, not a placement failure.
+# File 07 treats a ~3x discrepancy as a units problem, which is a 0.67 shortfall.
+MAX_UNIFORM_SHORTFALL = 0.65
 # Share of the mesh footprint that may sit on a neighbour before it is a problem.
 MAX_NEIGHBOR_OVERLAP = 0.10
 
@@ -71,15 +76,18 @@ def compute_placement(
         ),
     }
 
-    shape_ratio = rectangularity(local_polygon, best["rotationDegrees"])
-    checks["rotation"] = _check_rotation(candidates, best, shape_ratio, warnings)
     scale, scale_xyz, checks["scale"] = _check_scale(
         local_polygon, best["rotationDegrees"], mesh_width_meters, mesh_depth_meters, warnings
     )
-
     placed = geo_math.oriented_rectangle(
         origin, mesh_width_meters * scale, mesh_depth_meters * scale, best["rotationDegrees"]
     )
+
+    # The ceiling depends on the placed rectangle, so the rotation verdict comes
+    # after the scale fit even though rotation was chosen first.
+    shape_ratio = rectangularity(local_polygon, best["rotationDegrees"])
+    ceiling = achievable_iou(local_polygon, placed, best["rotationDegrees"])
+    checks["rotation"] = _check_rotation(candidates, best, shape_ratio, ceiling, warnings)
     checks["collision"] = _check_collision(placed, neighbors_lnglat, centroid, warnings)
 
     # Step 07 guarantees a base-center pivot at y=0, so ground level is z=0.
@@ -100,6 +108,7 @@ def compute_placement(
         "scoredRotationCandidates": candidates,
         "checks": checks,
         "rectangularity": round(shape_ratio, 4),
+        "achievableIou": round(ceiling, 4),
         "warnings": warnings,
         "rotation_note": (
             "The mesh footprint is approximated by its normalized width x depth "
@@ -151,10 +160,32 @@ def rectangularity(local_polygon: Sequence[Tuple[float, float]], bearing: float)
     return geo_math.polygon_area_2d(local_polygon) / box_area
 
 
+def achievable_iou(
+    local_polygon: Sequence[Tuple[float, float]],
+    placed_rect: Sequence[Tuple[float, float]],
+    bearing: float,
+) -> float:
+    """The best IoU this rectangle could reach against this polygon, at any rotation.
+
+    Two things cap it, and both must be accounted for or the rotation check asks
+    for something impossible. The footprint's shape is one: a rectangle cannot
+    cover an L. The mesh's area is the other, and it is the one that bites in
+    practice — a mesh whose depth was inferred from a single photo covers well
+    under half the real polygon, so even a perfectly-oriented mesh scores low.
+    """
+    poly_area = geo_math.polygon_area_2d(local_polygon)
+    rect_area = geo_math.polygon_area_2d(placed_rect)
+    if poly_area <= 0 or rect_area <= 0:
+        return 0.0
+    area_ratio = min(poly_area, rect_area) / max(poly_area, rect_area)
+    return min(rectangularity(local_polygon, bearing), area_ratio)
+
+
 def _check_rotation(
     candidates: List[Dict[str, float]],
     best: Dict[str, float],
     shape_ratio: float,
+    ceiling: float,
     warnings: List[str],
 ) -> Dict[str, Any]:
     if shape_ratio < MIN_RECTANGULARITY:
@@ -170,11 +201,11 @@ def _check_rotation(
             ),
         }
 
-    quality = best["iou"] / shape_ratio if shape_ratio > 0 else 0.0
+    quality = best["iou"] / ceiling if ceiling > 0 else 0.0
     if quality < MIN_FIT_QUALITY:
         warnings.append(
             f"Best rotation reaches IoU {best['iou']:.2f} against a ceiling of "
-            f"{shape_ratio:.2f} for this shape."
+            f"{ceiling:.2f} for this mesh and footprint."
         )
         return {
             "ok": False,
@@ -222,23 +253,37 @@ def _check_scale(
     larger = max(fit_along, fit_across)
     shortfall = 0.0 if larger <= 0 else 1.0 - (uniform / larger)
 
-    if shortfall <= MAX_UNIFORM_SHORTFALL:
+    if shortfall <= SCALE_STRETCH_HINT:
         return uniform, None, {
             "ok": True,
             "detail": f"Uniform scale {uniform:.3f} fits within {shortfall:.0%} on both axes.",
         }
 
     # Proportion-preserving is the stated preference, so the uniform factor stays
-    # the one `scale` reports; the stretch is offered alongside it.
+    # the one `scale` reports; the stretch is offered alongside it either way.
+    stretch = [round(fit_along, 4), 1.0, round(fit_across, 4)]
+    if shortfall <= MAX_UNIFORM_SHORTFALL:
+        warnings.append(
+            f"Mesh is {shortfall:.0%} shallower than the footprint, which is normal for a "
+            "single-photo reconstruction; scaleXYZ carries the non-uniform fit."
+        )
+        return uniform, stretch, {
+            "ok": True,
+            "detail": (
+                f"Uniform scale {uniform:.3f}; {shortfall:.0%} short on the free axis, "
+                "within what single-photo depth inference is expected to miss."
+            ),
+        }
+
     warnings.append(
-        f"Uniform scaling leaves the mesh {shortfall:.0%} short on one axis; "
-        "scaleXYZ carries the non-uniform fit."
+        f"Uniform scaling leaves the mesh {shortfall:.0%} short on one axis — far enough "
+        "that the mesh may be wrong rather than merely shallow."
     )
-    return uniform, [round(fit_along, 4), 1.0, round(fit_across, 4)], {
+    return uniform, stretch, {
         "ok": False,
         "detail": (
             f"Mesh and footprint proportions disagree by {shortfall:.0%} "
-            f"(> {MAX_UNIFORM_SHORTFALL:.0%}); uniform scale would look undersized."
+            f"(> {MAX_UNIFORM_SHORTFALL:.0%}); check the mesh's units."
         ),
     }
 
