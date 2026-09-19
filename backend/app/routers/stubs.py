@@ -1,7 +1,7 @@
-"""Placeholders for modules owned by other teammates.
+"""Routes nobody has implemented yet.
 
-Each route exists so the frontend and the API contract are complete from day one;
-the owner replaces the body. Do not implement these here — see the named spec file.
+Each exists so the API surface is complete and the frontend gets an honest 501
+instead of a 404. Replace the body when you pick one up — see the spec file.
 """
 
 from fastapi import APIRouter, HTTPException
@@ -10,11 +10,8 @@ router = APIRouter(tags=["not-implemented"])
 
 _OWNERS = {
     "/photo/mapillary": "03-photo-input.md",
-    "/photo/upload": "03-photo-input.md",
     "/worldstates": "04-worldstate-prompts.md",
     "/placement": "08-placement-transform.md",
-    "/generations": "11-persistence-supabase.md",
-    "/propagate": "10-propagate.md",
 }
 
 
@@ -27,34 +24,20 @@ def _pending(path: str):
 
 @router.get("/photo/mapillary")
 async def mapillary_photos():
+    """Step 03's optional convenience layer. Manual upload already works via
+    /generate-image's multipart `photo` field, which is the required path."""
     _pending("/photo/mapillary")
-
-
-@router.post("/photo/upload")
-async def upload_photo():
-    _pending("/photo/upload")
 
 
 @router.get("/worldstates")
 async def world_states():
+    """Step 04. Until this lands the frontend sends raw prompt text, which
+    04-worldstate-prompts.md says must not happen for the five presets."""
     _pending("/worldstates")
 
 
 @router.post("/placement")
 async def compute_placement():
+    """Step 08 — the rotation/scale/ground-alignment core. Nothing computes a
+    real transform yet, so rows are written with step 08's defaults."""
     _pending("/placement")
-
-
-@router.get("/generations")
-async def list_generations():
-    _pending("/generations")
-
-
-@router.post("/generations")
-async def save_generation():
-    _pending("/generations")
-
-
-@router.post("/propagate")
-async def propagate():
-    _pending("/propagate")

@@ -2,9 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "web",
+      "name": "frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "frontend", "--", "--port", "5173"],
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "frontend",
       "port": 5173
     }
   ]

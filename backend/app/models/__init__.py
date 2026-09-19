@@ -1,0 +1,41 @@
+"""The shared API contract. Import from here, not from `contracts` directly."""
+
+from .contracts import (
+    CONFIDENCE_STATES,
+    ConfidenceState,
+    Correction,
+    FootprintCandidate,
+    FootprintRequest,
+    FootprintResult,
+    Generation,
+    GenerationCreate,
+    GenerateImageResult,
+    GenerateMeshResult,
+    GeocodeResult,
+    MeshNormalization,
+    NormalizeMeshResult,
+    Placement,
+    ProviderAttempt,
+    ScoredRotation,
+    WorldState,
+)
+
+__all__ = [
+    "CONFIDENCE_STATES",
+    "ConfidenceState",
+    "Correction",
+    "FootprintCandidate",
+    "FootprintRequest",
+    "FootprintResult",
+    "Generation",
+    "GenerationCreate",
+    "GenerateImageResult",
+    "GenerateMeshResult",
+    "GeocodeResult",
+    "MeshNormalization",
+    "NormalizeMeshResult",
+    "Placement",
+    "ProviderAttempt",
+    "ScoredRotation",
+    "WorldState",
+]

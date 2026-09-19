@@ -1,0 +1,119 @@
+/* Functional layout only.
+   The terminal/OCR visual skin is step 13 and belongs to another agent —
+   these rules stay structural so that skin can restyle without a rewrite. */
+
+:root {
+  --sn-bg: #0f1210;
+  --sn-panel: #171c19;
+  --sn-border: #2b332d;
+  --sn-text: #dfe6e0;
+  --sn-muted: #93a096;
+  --sn-accent: #6ee7a0;
+  --sn-warn: #e6a028;
+  --sn-danger: #e2544a;
+  --sn-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; margin: 0; }
+
+body {
+  background: var(--sn-bg);
+  color: var(--sn-text);
+  font-family: var(--sn-mono);
+  font-size: 13px;
+}
+
+.app-shell { position: relative; height: 100%; width: 100%; }
+
+/* Two class names deep on purpose: maplibre-gl.css is imported from MapView and
+   so lands after this file, and its `.maplibregl-map { position: relative }`
+   would otherwise win on source order and collapse the map to zero height. */
+.app-shell > .map-root { position: absolute; inset: 0; }
+
+/* Panels float over the map. */
+.panel {
+  position: absolute;
+  background: var(--sn-panel);
+  border: 1px solid var(--sn-border);
+  border-radius: 6px;
+  padding: 12px;
+  z-index: 10;
+  max-height: calc(100% - 32px);
+  overflow-y: auto;
+}
+
+.panel h2 { font-size: 13px; margin: 0 0 8px; letter-spacing: 0.04em; }
+.panel, .panel * { overflow-wrap: break-word; }
+.panel h3 { font-size: 11px; margin: 12px 0 6px; color: var(--sn-muted);
+            text-transform: uppercase; letter-spacing: 0.08em; }
+
+.panel-left   { top: 16px; left: 16px;  width: 260px; }
+.panel-right  { top: 16px; right: 56px; width: 330px; }
+
+.row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.row label { color: var(--sn-muted); min-width: 74px; }
+.spread { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+
+button {
+  font-family: var(--sn-mono);
+  font-size: 12px;
+  background: #212a24;
+  color: var(--sn-text);
+  border: 1px solid var(--sn-border);
+  border-radius: 4px;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--sn-accent); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button.active { border-color: var(--sn-accent); color: var(--sn-accent); }
+button.primary { background: #1d3227; border-color: var(--sn-accent); color: var(--sn-accent); }
+
+input[type='range'] { width: 100%; accent-color: var(--sn-accent); }
+
+.btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+
+.badge {
+  display: inline-block; padding: 1px 6px; border-radius: 3px;
+  font-size: 10px; letter-spacing: 0.06em; border: 1px solid transparent;
+}
+.badge--auto-high { color: var(--sn-accent); border-color: #2c5c3e; }
+.badge--auto-low { color: var(--sn-warn); border-color: #5c4a20; }
+.badge--manually-verified { color: #7fb6ff; border-color: #2c4468; }
+
+.muted { color: var(--sn-muted); }
+.mono-sm { font-size: 11px; color: var(--sn-muted); overflow-wrap: anywhere; }
+
+.error-banner {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 50;
+  background: var(--sn-danger); color: #fff; padding: 8px 14px; font-size: 12px;
+}
+
+.thumbs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.thumbs figure { margin: 0; }
+.thumbs img {
+  width: 100%; height: 92px; object-fit: cover;
+  border: 1px solid var(--sn-border); border-radius: 4px; background: #0b0e0c;
+}
+.thumbs figcaption { font-size: 10px; color: var(--sn-muted); margin-top: 3px; }
+
+.timeline { list-style: none; margin: 0; padding: 0; }
+.timeline li {
+  padding: 5px 8px; border-left: 2px solid var(--sn-border); margin-left: 4px;
+  cursor: pointer; display: flex; justify-content: space-between; gap: 8px;
+  align-items: center;
+}
+.timeline li > span:first-child { min-width: 0; }
+.timeline .badge { flex: 0 0 auto; white-space: nowrap; }
+.timeline li:hover { background: #1d241f; }
+.timeline li.current { border-left-color: var(--sn-accent); color: var(--sn-accent); }
+
+.hint { font-size: 11px; color: var(--sn-muted); line-height: 1.5; }
+
+.thumb-missing {
+  width: 100%; height: 92px; display: grid; place-items: center;
+  border: 1px dashed var(--sn-border); border-radius: 4px;
+  background: #0b0e0c; color: var(--sn-muted); font-size: 10px;
+}

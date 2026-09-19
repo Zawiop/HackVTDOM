@@ -1,0 +1,91 @@
+"""HTTP-level contract the frontend (steps 09/10/12) builds against."""
+from __future__ import annotations
+
+import pytest
+
+
+def _payload(address="Burruss Hall", world_state="reclaimed", confidence="auto-high"):
+    return {
+        "address": address, "lat": 37.2295, "lng": -80.4234,
+        "source_photo": "https://example.invalid/a.jpg",
+        "artifact": "https://example.invalid/b.png",
+        "mesh_url": "https://example.invalid/c.glb",
+        "world_state": world_state,
+        "placement": {
+            "rotationDegrees": 47.5, "scale": 1.83,
+            "position": [37.2295, -80.4234, 0.0], "confidence": confidence,
+            "scoredRotationCandidates": [
+                {"rotationDegrees": 47.5, "iou": 0.81},
+                {"rotationDegrees": 227.5, "iou": 0.79},
+            ],
+        },
+    }
+
+
+def test_health_reports_backend(client):
+    r = client.get("/api/health")
+    assert r.status_code == 200
+    assert r.json()["store"]["ok"] is True
+
+
+def test_post_then_get_roundtrips_over_http(client):
+    created = client.post("/api/generations", json=_payload())
+    assert created.status_code == 201, created.text
+    gid = created.json()["id"]
+
+    fetched = client.get(f"/api/generations/{gid}")
+    assert fetched.status_code == 200
+    assert fetched.json()["placement"]["scale"] == pytest.approx(1.83)
+    assert fetched.json()["mesh_url"] == "https://example.invalid/c.glb"
+
+
+def test_history_endpoint_returns_sequence(client):
+    for ws in ("reclaimed", "flooded"):
+        client.post("/api/generations", json=_payload(world_state=ws))
+    r = client.get("/api/history", params={"address": "Burruss Hall"})
+    assert [g["world_state"] for g in r.json()] == ["reclaimed", "flooded"]
+
+
+def test_history_requires_an_address(client):
+    assert client.get("/api/history").status_code == 422
+
+
+def test_correction_endpoint_flips_state(client):
+    gid = client.post("/api/generations", json=_payload(confidence="auto-low")).json()["id"]
+    r = client.patch(f"/api/generations/{gid}/correction", json={"rotationDegrees": 227.5})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["confidence_state"] == "manually-verified"
+    assert body["placement"]["rotationDegrees"] == pytest.approx(227.5)
+
+
+def test_empty_correction_is_rejected(client):
+    gid = client.post("/api/generations", json=_payload()).json()["id"]
+    assert client.patch(f"/api/generations/{gid}/correction", json={}).status_code == 400
+
+
+def test_correction_on_missing_row_is_404(client):
+    r = client.patch(
+        "/api/generations/00000000-0000-0000-0000-000000000000/correction",
+        json={"scale": 2.0},
+    )
+    assert r.status_code == 404
+
+
+def test_blank_address_rejected(client):
+    bad = _payload(address="   ")
+    assert client.post("/api/generations", json=bad).status_code == 422
+
+
+def test_unknown_top_level_field_rejected(client):
+    """extra='forbid' catches a teammate sending a field the schema never agreed on."""
+    bad = _payload() | {"totally_new_field": 1}
+    assert client.post("/api/generations", json=bad).status_code == 422
+
+
+def test_list_endpoint_feeds_the_map(client):
+    client.post("/api/generations", json=_payload(address="A"))
+    client.post("/api/generations", json=_payload(address="B"))
+    rows = client.get("/api/generations").json()
+    assert len(rows) == 2
+    assert {"id", "lat", "lng", "placement", "mesh_url", "confidence_state"} <= set(rows[0])
