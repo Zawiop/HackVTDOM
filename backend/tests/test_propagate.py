@@ -98,3 +98,48 @@ def test_unknown_source_is_404(client):
         "radius_meters": 100,
     })
     assert r.status_code == 404
+
+
+def test_accepts_step_02_footprint_candidates_verbatim(client, store):
+    """Step 02 returns neighbours with `centroid` in GeoJSON [lng, lat] order.
+
+    The frontend passes `footprintResult.neighbors` straight through, so
+    requiring flat lat/lng here silently 422s the whole propagate call.
+    """
+    src = _source(store)
+    _at(store, 40, 0)
+    un_lat, un_lng = offset_meters(*ORIGIN, 120, 0)
+
+    r = client.post("/api/propagate", json={
+        "source_generation_id": src.id,
+        "radius_meters": 250,
+        "neighbors": [
+            # exactly the shape FootprintCandidate serialises to
+            {"centroid": [un_lng, un_lat], "osmId": 49151374, "osmType": "way",
+             "tags": {"name": "Somewhere"}, "distanceMeters": 120.0},
+        ],
+    })
+    assert r.status_code == 200, r.text
+    assert r.json()["counts"]["pending"] == 1
+
+
+def test_rejects_a_neighbour_with_neither_coords_nor_centroid(client, store):
+    src = _source(store)
+    r = client.post("/api/propagate", json={
+        "source_generation_id": src.id, "radius_meters": 100,
+        "neighbors": [{"osmId": 1}],
+    })
+    assert r.status_code == 422
+
+
+def test_centroid_is_not_read_as_lat_lng(client, store):
+    """[lng, lat] read backwards puts VT neighbours in the Indian Ocean."""
+    src = _source(store)
+    near_lat, near_lng = offset_meters(*ORIGIN, 60, 0)
+    r = client.post("/api/propagate", json={
+        "source_generation_id": src.id, "radius_meters": 250,
+        "neighbors": [{"centroid": [near_lng, near_lat]}],
+    })
+    assert r.status_code == 200, r.text
+    # Swapped, this point would be thousands of km away and filtered out.
+    assert r.json()["counts"]["pending"] == 1
