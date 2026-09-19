@@ -46,3 +46,6 @@ pnpm-debug.log*
 output/
 outputs/
 tmp/
+
+
+!**/placeholder.glb
