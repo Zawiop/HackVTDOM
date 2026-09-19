@@ -78,7 +78,9 @@ async def generate_live(photo: bytes, world_state: str, footprint) -> tuple[str,
     prompt, _, _ = worldstate.resolve(world_state, None)
     try:
         image = await generate_redesigned_image(photo, prompt)
-    except Exception as exc:  # provider errors are varied; any of them means fall back
+    # Deliberately NOT bare Exception: a TypeError here is a wrong call signature,
+    # and swallowing it reports a provider outage that never happened.
+    except (OSError, RuntimeError, ValueError) as exc:
         print(f"    live image failed ({str(exc)[:70]}) — using captured artifact")
         return None
 
@@ -86,10 +88,10 @@ async def generate_live(photo: bytes, world_state: str, footprint) -> tuple[str,
     try:
         mesh = await generate_mesh(
             image_bytes,
-            footprint_width_meters=footprint.footprintWidthMeters,
-            footprint_depth_meters=footprint.footprintDepthMeters,
+            footprint_width_m=footprint.footprintWidthMeters,
+            footprint_depth_m=footprint.footprintDepthMeters,
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         print(f"    live mesh failed ({str(exc)[:70]}) — using captured artifact")
         return None
 
