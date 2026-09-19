@@ -1,0 +1,79 @@
+<!doctype html>
+<!-- Orientation sanity check (spec 07 step 4) using the renderer from spec 12.
+     Open with ?mesh=<meshUrl>&yaw=<deg>&w=<footprint width m>&d=<footprint depth m>.
+     Draws the normalized mesh with getOrientation [0, yaw, 90] next to the placeholder,
+     each over an outline of its footprint rectangle (placeholder: its native 18x10.5 m), so upright / grounded / scale can be
+     judged by eye. Test harness only, not the app's map. -->
+<html>
+<head>
+<meta charset="utf-8">
+<title>Mesh orientation check</title>
+<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/deck.gl@9.1.14/dist.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@loaders.gl/gltf@4.3.4/dist/dist.min.js"></script>
+<style>
+  html, body, #map { margin: 0; height: 100%; }
+  #info { position: absolute; top: 8px; left: 8px; background: #fffd; padding: 6px 10px; font: 13px system-ui; z-index: 2; max-width: 60%; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="info">loading…</div>
+<script>
+const q = new URLSearchParams(location.search);
+const API = q.get('api') || 'http://localhost:8000';
+const meshUrl = q.get('mesh');
+const yaw = +(q.get('yaw') || 0);
+const W = +(q.get('w') || 95), D = +(q.get('d') || 40);
+const center = [-80.4236, 37.2288]; // Burruss Hall, Blacksburg VA
+const placeholderPos = [center[0] + 0.0016, center[1] - 0.0009];
+
+// Footprint rectangle (w along the rotated X axis, d along rotated Z) in lng/lat.
+function rect([lng, lat], w, d, yawDeg) {
+  const mPerDegLat = 111320, mPerDegLng = 111320 * Math.cos(lat * Math.PI / 180);
+  const t = yawDeg * Math.PI / 180;
+  // Mesh X -> east rotated by yaw (counterclockwise); mesh +Z -> (sin t, -cos t) (south at yaw 0).
+  const ex = [Math.cos(t), Math.sin(t)], ez = [Math.sin(t), -Math.cos(t)];
+  return [[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]].map(([a, b]) => {
+    const e = a * w / 2 * ex[0] + b * d / 2 * ez[0], n = a * w / 2 * ex[1] + b * d / 2 * ez[1];
+    return [lng + e / mPerDegLng, lat + n / mPerDegLat];
+  });
+}
+
+const map = new maplibregl.Map({
+  container: 'map',
+  style: {
+    version: 8,
+    sources: { osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256,
+      attribution: '© OpenStreetMap contributors' } },
+    layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
+  },
+  center: [center[0] + 0.0008, center[1] - 0.0005], zoom: 17.2, pitch: 62, bearing: -20, antialias: true,
+});
+
+const status = [];
+const meshLayer = (id, url, pos) => new deck.ScenegraphLayer({
+  id, data: [{ pos }], scenegraph: url, // one layer per mesh: scenegraph is a layer prop, not an accessor
+  getPosition: d => [...d.pos, 0],
+  getOrientation: () => [0, yaw, 90], // spec 12 contract
+  sizeScale: 1, _lighting: 'pbr',
+  onDataLoad: () => { status.push(id + ' loaded'); info(); },
+  onError: e => { status.push(id + ' ERROR ' + e); info(); },
+});
+function info() {
+  document.getElementById('info').textContent =
+    `yaw=${yaw}° roll=90 | footprint ${W}×${D} m | ${status.join(' · ')}`;
+}
+
+const layers = [
+  new deck.PathLayer({ id: 'fp', data: [{ path: rect(center, W, D, yaw) }, { path: rect(placeholderPos, 18, 10.5, yaw) }],
+    getPath: d => d.path, getColor: [255, 40, 40], getWidth: 1.5, widthUnits: 'meters' }),
+  meshLayer('placeholder', `${API}/assets/placeholder.glb`, placeholderPos),
+];
+if (meshUrl) layers.push(meshLayer('generated', meshUrl, center));
+map.addControl(new deck.MapboxOverlay({ interleaved: true, layers }));
+info();
+</script>
+</body>
+</html>

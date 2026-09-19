@@ -24,8 +24,10 @@ for why each one was chosen over the paid option it replaced.
 - **Geocoding:** Nominatim (OpenStreetMap)
 - **Building footprints:** OpenStreetMap Overpass API
 - **Street imagery:** Mapillary
-- **AI image redesign:** Google Gemini image model
-- **Image → 3D mesh:** TripoSR via Hugging Face Spaces
+- **AI image redesign:** Google Gemini image model, falling through to FLUX.1 Kontext [dev] on a
+  Hugging Face Space (our key has no free Gemini image quota; see `STATUS.md`)
+- **Image → 3D mesh:** Stable Fast 3D on a Hugging Face Space (the TripoSR Space is down), then
+  normalized with `trimesh`
 - **Database:** Supabase (Postgres)
 
 ## Repo layout

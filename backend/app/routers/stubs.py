@@ -12,9 +12,6 @@ _OWNERS = {
     "/photo/mapillary": "03-photo-input.md",
     "/photo/upload": "03-photo-input.md",
     "/worldstates": "04-worldstate-prompts.md",
-    "/generate/image": "05-image-edit-gemini.md",
-    "/generate/mesh": "06-mesh-generate-triposr.md",
-    "/mesh/normalize": "07-mesh-normalize.md",
     "/placement": "08-placement-transform.md",
     "/generations": "11-persistence-supabase.md",
     "/propagate": "10-propagate.md",
@@ -41,21 +38,6 @@ async def upload_photo():
 @router.get("/worldstates")
 async def world_states():
     _pending("/worldstates")
-
-
-@router.post("/generate/image")
-async def generate_image():
-    _pending("/generate/image")
-
-
-@router.post("/generate/mesh")
-async def generate_mesh():
-    _pending("/generate/mesh")
-
-
-@router.post("/mesh/normalize")
-async def normalize_mesh():
-    _pending("/mesh/normalize")
 
 
 @router.post("/placement")

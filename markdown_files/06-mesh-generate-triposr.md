@@ -113,3 +113,22 @@ Wrap the call in a hard timeout (60-90s is reasonable for a shared queue) and a 
 
 ## What stays the same from the original plan
 Everything about step 07 (normalization) and beyond is unaffected — they only care that this function returns a mesh file, not which service produced it. Tripo3D remains a paid fallback if the team decides late in the day that a card-based option is acceptable after all; it is not part of the free-only path.
+
+### TripoSR run locally — WORKING (added 2026-09-19 after the HF token hit its ZeroGPU runs limit on Kontext)
+Same model, no Space: `backend/app/generation/triposr_local.py` loads `stabilityai/TripoSR`
+(`model.ckpt` + `config.yaml`, ~1.7 GB, into `backend/.cache/hf`) from the MIT-licensed
+`VAST-AI-Research/TripoSR` repo, with a PyMCubes shim standing in for `torchmcubes`.
+```
+Example call:
+from app.generation import triposr_local
+glb = triposr_local.generate_glb(rgba_cutout)      # PIL RGBA, transparent background
+
+Example response (Burruss cutout, Apple M5 Pro, MPS):
+model load 4.7 s; inference 4.9 s cold / 3.2 s warm (marching cubes at 256^3)
+raw mesh: 52,703 verts / 105,320 faces, ColorVisuals (vertex colors), no material,
+bounds [-0.378,-0.556,-0.338]..[0.329,0.514,0.269] -> unitless, lying on its side in glTF terms
+```
+Axis convention: TripoSR's code says "right hand coordinate system, x back, y right, z up" with the
+input-view camera at azimuth 0 = +X (`tsr/utils.py` `get_spherical_cameras`), and the repo exports
+unrotated. So the raw mesh is **+Z up, facade toward +X** (image-right = +Y), confirmed by render.
+Needs `transformers<5`: 5.x renamed the ViT weight keys and the checkpoint fails to load.

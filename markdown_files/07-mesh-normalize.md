@@ -20,3 +20,35 @@ A `.glb` file with meters-correct scale, consistent up-axis, and a base-centered
 
 ## Failure handling
 If unit sanity-check fails badly (mesh is nonsensically large or small relative to the known footprint) and no reasonable correction factor is obvious, flag `confidence: "low"` and route to manual correction (step 09) rather than guessing a scale factor that might be very wrong.
+
+## VERIFIED OUTPUT CONVENTION (2026-09-19) — what steps 08 and 12 can rely on
+Implemented in `backend/app/generation/mesh_normalize.py`, run inside `POST /api/generate-mesh` (and
+standalone as `POST /api/mesh/normalize` to re-fit a mesh once the real footprint is known).
+
+Every returned `.glb` is:
+- **glTF +Y up**; the **photographed facade faces +Z**; +X is the viewer's right when facing the facade.
+  (SF3D's raw output is +Y up with the facade at −Z — verified from its export code and by render —
+  so normalization applies a 180° yaw. The placeholder is authored in-convention.)
+- **Squared up**: the mesh's minimum-area ground rectangle is rotated onto X/Z by the smallest yaw
+  (≤ 45°), because street photos are taken at an angle and the raw mesh sits diagonally (22–27° on
+  the Burruss test photos). Without this the bounding box measures a diagonal and step 08's
+  0/90/180/270 candidates miss the real walls.
+- **Meters**. Unit check: image-to-3D output is unitless (~1-unit box), so the longest horizontal
+  side is fitted to the longest footprint side. For meshes declared to be in meters, a mesh within
+  3.5x of the footprint is left alone; one further off is converted only if a cm/mm/in/ft factor
+  lands within 2x, otherwise it is left unscaled and flagged `auto-low` (never a guessed factor).
+  No footprint supplied → sized to 20 m with a warning; step 08 rescales.
+- **Pivot at base-center**: X/Z bounding-box center, lowest point at y = 0. Tiny disconnected
+  floaters (< 0.5% of faces, measured on a position-welded copy so UV seams don't count) are
+  dropped first so they can't drag the base down.
+- Exported with `NORMAL` (+ `TEXCOORD_0` and the baseColor texture).
+
+**Visual check done** (step 4 above): rendered with matplotlib from 4 views (`backend/scripts/render_mesh.py`)
+and in deck.gl 9 + MapLibre at Burruss Hall's real coordinates (`backend/tests/viewer/deck_check.html`,
+served at `/debug/deck_check.html` when `DEBUG_VIEWER=1`). With `getOrientation: [0, yaw, 90]`:
+upright, textured, base on the ground, not mirrored. **At yaw 0 the facade faces south; at yaw 90 it
+faces east** (checked by looking west at yaw 90 and seeing the entrance head-on) — so the facade's compass
+bearing is `180 − yaw`, and mesh +X points east at yaw 0.
+
+Real sample outputs to test against: `backend/assets/samples/` (Burruss Hall, scorched + flooded,
+fitted to its real 101.88 x 70.79 m OSM footprint).

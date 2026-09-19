@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .routers import footprint, geocode, health, stubs
+from .routers import footprint, generation, geocode, health, stubs
 
 logging.basicConfig(level=logging.INFO)
 
@@ -25,4 +25,6 @@ app.add_middleware(
 app.include_router(health.router, prefix="/api")
 app.include_router(geocode.router, prefix="/api")
 app.include_router(footprint.router, prefix="/api")
+app.include_router(generation.router, prefix="/api")
 app.include_router(stubs.router, prefix="/api")
+generation.setup(app)  # /outputs + /assets static files, cutout-model warmup

@@ -183,3 +183,133 @@ requests through the app kept working. The app throttles to 1 request/second ser
 3. **`README.md` still describes the original Node/Express + `apps/api` + `packages/shared`
    layout**, which is not what we built. I updated the stack and layout sections to match; flag
    it if that collides with anything.
+
+---
+---
+
+# STATUS — AI generation: image edit, mesh generation, mesh normalization (files 05, 06, 07)
+
+Last updated 2026-09-19. Code: `backend/app/generation/` + `backend/app/routers/generation.py`.
+
+## State
+
+| Piece | State |
+| --- | --- |
+| `POST /api/generate-image` (05) | Done. Verified live: real photo → real redesigned PNG in ~33–40 s |
+| `POST /api/generate-mesh` (06 + 07) | Done. Verified live: image → normalized textured .glb in ~10–20 s |
+| `POST /api/mesh/normalize` (07 standalone) | Done: re-fits an existing .glb, e.g. once the real footprint is known |
+| `GET /api/generate/status` | Provider cooldowns + live HF Space states |
+| Local TripoSR mesh provider | Done (optional install): same TripoSR model run on this Mac, ~5 s on MPS, no quota |
+| Placeholder fallback mesh | Committed: `backend/assets/placeholder.glb`, served at `/assets/placeholder.glb` |
+| Real sample outputs | Committed: `backend/assets/samples/` (Burruss Hall, scorched + flooded) |
+
+The foundation's stub paths `/api/generate/image` and `/api/generate/mesh` are served too (same
+handlers), and their 501 stubs are removed. Tests, all passing: 24 offline (`pytest`), 14 live
+(`pytest -m live`, needs the server running, calls the real Spaces), 1 heavy (`pytest -m heavy`,
+local TripoSR through the real route). The foundation's 16 tests still pass on the bumped pins.
+
+## PERSISTENT FAILURES (external, not fixable in our code)
+
+1. **Gemini has no free image quota on our key.** Every image-output model
+   (`gemini-2.5-flash-image`, `gemini-3.1-flash-image`, `gemini-3-pro-image`, the `-lite`/`-preview`
+   variants, `gemini-omni-*`) returns `429 RESOURCE_EXHAUSTED ... limit: 0`. The allocation is zero,
+   not used up. The key itself works (text models answer). So file 00's "Gemini free tier for
+   image editing" premise is false today. **Replacement:** FLUX.1 Kontext [dev] via the public HF
+   Space `black-forest-labs/FLUX.1-Kontext-Dev` (free, uses `HF_TOKEN`). Gemini stays first in the
+   chain; on a `limit: 0` 429 it's skipped for an hour, so it costs ~0.6 s once per hour.
+2. **The `stabilityai/TripoSR` Space is broken** (`RUNTIME_ERROR` since its 2026-05-24 rebuild:
+   its `torchmcubes` dependency no longer compiles). No call can succeed and no public duplicate is
+   running. **Replacement:** `stabilityai/stable-fast-3d` (SF3D), Stability's successor model, which
+   outputs a textured `.glb` directly. TripoSR stays first in the chain behind a cached runtime-stage
+   check (skipped in ~0 ms while it's down).
+
+3. **Our HF token ran out of Kontext ZeroGPU runs** after ~5 image edits today:
+   `AppError: You have exceeded your ZeroGPU runs limit. Subscribe to Hugging Face PRO to get 40 min
+   of ZeroGPU quota a day`. SF3D kept working (its runs are cheap). Until the quota refills, uncached
+   `/api/generate-image` calls return `502 {retryable: true}` with that message in `attempts`, and
+   cached photo+prompt pairs still return instantly. **So generate demo images early and reuse
+   them.** A third free image path would need the HF token to have the "Make calls to Inference
+   Providers" permission (currently `403` for fine-grained token `ris-011`). Only the account owner
+   can change that, and I didn't wire a provider whose response I couldn't capture.
+
+**Mesh-side mitigation, done: local TripoSR.** The mesh chain is `triposr` (Space, skipped while
+down) → `sf3d` (Space) → **`triposr-local`** → placeholder. `triposr-local` runs the same open
+TripoSR model on this machine (Apple MPS, ~5 s per mesh, no queue, no quota). The only thing that
+broke the Space, `torchmcubes`, is swapped for PyMCubes. Its axis convention (+Z up, facade +X)
+comes from TripoSR's own camera code and was confirmed by render. Optional install:
+`backend/requirements-local-mesh.txt` + one `git clone` (see `app/generation/triposr_local.py`).
+Without it the chain skips straight to the placeholder.
+
+Both captured request/response pairs are in files 05 and 06 (CAPTURED EXAMPLE blocks).
+
+## Contract (build against this; Pydantic models in `models/contracts.py`, TS in `types/contract.ts`)
+
+**`POST /api/generate-image`**: `multipart/form-data`: `photo` (file), `worldStatePrompt` (text),
+optional `force=true` (skip cache).
+→ `200 { imageUrl, sourcePhotoUrl, provider, model, width, height, attempts[], cached, elapsedMs }`.
+`imageUrl` is a PNG (the "after" panel); `sourcePhotoUrl` is the EXIF-corrected upload (the "before").
+Errors: `400` bad input, `415` not an image, `502`/`504` generation failed/timed out with
+`{ detail, retryable: true, attempts }`. Hard budget 60 s (`IMAGE_TIMEOUT_S`).
+
+**`POST /api/generate-mesh`**: JSON, multipart or urlencoded: `imageUrl` (e.g. the generate-image
+output) or `image` (file), plus `footprintWidthMeters`, `footprintDepthMeters` from step 02 (optional,
+but pass them), optional `force`.
+→ `200 { meshUrl, rawMeshUrl, cutoutUrl, confidence: "auto-high"|"auto-low", provider:
+"sf3d"|"triposr"|"triposr-local"|"placeholder", fallbackReason, normalization{...}, warnings[], attempts[], cached,
+elapsedMs }`. **Never fails for provider reasons.** On failure or timeout (75 s per attempt, retried
+once) you get the placeholder, `confidence: "auto-low"` and a `fallbackReason`. `400`/`415` only for
+bad input.
+
+**Mesh convention** (details in file 07 and `backend/assets/samples/README.md`): glTF +Y up,
+facade faces +Z, meters, sized to the footprint's longest side, base-center pivot at y = 0, walls
+squared to X/Z, `NORMAL` included. In deck.gl: `getOrientation [0, yaw, 90]`. **Facade compass
+bearing = 180 − yaw** (verified in a real render: yaw 0 → facade south, yaw 90 → east).
+
+Files are served by the backend at `PUBLIC_BASE_URL/outputs/...` (default
+`http://localhost:8000`). Set `PUBLIC_BASE_URL` if the frontend reaches the backend at another host.
+
+## Decisions where the spec was silent or wrong
+
+- **Prompt wrapping.** Handing Kontext a bare scene description made it *replace* Burruss Hall with
+  a generic house. The World State text is now wrapped as "Edit this photo of a real building. Keep
+  the exact same building ... Change only its condition ... to match this scene: {prompt}", after
+  which the tower, wings and entrance survive every edit tested. Step 04's preset strings can stay
+  pure scene descriptions.
+- **Background cutout before image→3D.** SF3D is an object model; a street photo must be cut out
+  first. Local `rembg` `birefnet-general` (~5–8 s warm, preloaded at startup, model cached in
+  `backend/.cache/`) kept the whole building. `u2net` lost a wing and `isnet` grabbed only the flag.
+- **SF3D's Gradio API is misdocumented** by `view_api()`: `/run_button` has hidden Button/State
+  inputs, so the documented 5-argument call fails. We seed session state via `/requires_bg_remove`
+  and pass all 7 inputs explicitly (see file 06).
+- **Normalization squares the mesh up** (photos are taken at an angle; raw meshes sat 22–27° off)
+  and **drops floaters using a UV-seam-aware weld**. A plain `split()` treated 829 texture islands
+  as "fragments" and would have shredded the surface.
+- **Every mesh gets a material and a texture.** Two deck.gl gotchas found in the render harness:
+  a glTF primitive with *no material* draws nothing at all in `ScenegraphLayer`, and *vertex colors*
+  (`COLOR_0`) are ignored by its PBR shader (flat grey). Normalization now patches in a material for
+  any material-less primitive. Local TripoSR's vertex colors are baked into a small per-face
+  texture atlas after decimating to 30k faces.
+- **Confidence uses the team vocabulary** `auto-high`/`auto-low` (file 06 literally says `"low"`).
+- **Caching**: results are content-addressed (`backend/outputs/`, git-ignored) and persisted in
+  `outputs/cache.json`, so a repeat request for the same photo + prompt (or image + footprint) is
+  instant and survives restarts. Only real generations are cached, never placeholder fallbacks.
+- **Dependency pins bumped** in `backend/requirements.txt`: `google-genai` needs `pydantic>=2.12.5`,
+  so the foundation's `pydantic==2.10.4` could not stay. FastAPI/uvicorn/pytest now match the
+  persistence branch's pins (0.141.1 / 0.53.0 / 9.1.1). Starlette 1.x dropped
+  `add_event_handler`, so the startup warmup wraps `app.router.lifespan_context` instead.
+
+## Risks for demo day
+
+- **HF ZeroGPU daily quota (already hit once, see #3).** Both Spaces bill our free `HF_TOKEN`.
+  On a quota error the provider goes on a 10-minute cooldown. The mesh route then falls through to
+  local TripoSR or the placeholder, and the image route returns 502, retryable. **Pre-generate demo
+  buildings early.** Results are cached on disk and replay instantly.
+- Public queues: Kontext took 33 s idle and 40 s under light load. Budget is 60 s per the spec.
+
+## Needs a decision from the team
+
+1. If anyone has a Google project with image quota (paid), setting that `GEMINI_API_KEY` makes
+   Gemini the live provider with no code change. Otherwise Kontext is the image path.
+2. The HF token owner could enable "Make calls to Inference Providers" on the token (free monthly
+   credits). That opens a second image path once someone captures its response.
+3. Decide which 2-3 demo buildings + World States to pre-generate while Kontext quota is available.

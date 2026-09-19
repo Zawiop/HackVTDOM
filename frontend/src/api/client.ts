@@ -1,4 +1,9 @@
-import type { FootprintResult, GeocodeResult } from "../types/contract";
+import type {
+  FootprintResult,
+  GenerateImageResult,
+  GenerateMeshResult,
+  GeocodeResult,
+} from "../types/contract";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -34,6 +39,43 @@ export function getFootprint(
   return request<FootprintResult>("/api/footprint", {
     method: "POST",
     body: JSON.stringify({ lat, lng }),
+    signal,
+  });
+}
+
+/**
+ * Step 05. Slow (~30-60 s on the free HF queue): show progress, and on ApiError offer a retry
+ * (the backend answers 502/504 with `retryable: true` rather than hanging).
+ */
+export function generateImage(
+  photo: Blob,
+  worldStatePrompt: string,
+  signal?: AbortSignal,
+) {
+  const form = new FormData();
+  form.append("photo", photo);
+  form.append("worldStatePrompt", worldStatePrompt);
+  // Empty headers so the browser sets the multipart boundary itself.
+  return request<GenerateImageResult>("/api/generate-image", {
+    method: "POST",
+    body: form,
+    headers: {},
+    signal,
+  });
+}
+
+/**
+ * Steps 06+07. Pass step 02's selected footprint so the mesh comes back sized in meters.
+ * Always resolves with a mesh; check `confidence` / `provider === "placeholder"`.
+ */
+export function generateMesh(
+  imageUrl: string,
+  footprint?: { footprintWidthMeters: number; footprintDepthMeters: number },
+  signal?: AbortSignal,
+) {
+  return request<GenerateMeshResult>("/api/generate-mesh", {
+    method: "POST",
+    body: JSON.stringify({ imageUrl, ...footprint }),
     signal,
   });
 }

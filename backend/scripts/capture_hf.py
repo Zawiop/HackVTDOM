@@ -12,7 +12,9 @@ import time
 from pathlib import Path
 
 from dotenv import load_dotenv
-from gradio_client import Client, handle_file
+
+os.environ.setdefault("HF_HOME", str(Path(__file__).resolve().parent.parent / ".cache" / "hf"))
+from gradio_client import Client, handle_file  # noqa: E402  (HF_HOME must be set first)
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")

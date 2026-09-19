@@ -1,8 +1,20 @@
-fastapi==0.115.6
-uvicorn[standard]==0.32.1
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
 httpx==0.28.1
-pydantic==2.10.4
-pydantic-settings==2.7.0
-python-dotenv==1.0.1
-python-multipart==0.0.20
-pytest==8.3.4
+# google-genai needs pydantic>=2.12.5
+pydantic==2.13.5
+pydantic-settings==2.15.0
+python-dotenv==1.2.3
+python-multipart==0.0.32
+pytest==9.1.1
+
+# Steps 05-07: image edit, mesh generation, mesh normalization (app/generation/)
+google-genai==2.24.0
+gradio_client==2.7.1
+trimesh==5.1.0
+numpy==2.5.3
+scipy==1.18.1
+networkx==3.6.1
+pillow==12.3.0
+rembg[cpu]==2.0.84
+matplotlib==3.11.2  # scripts/render_mesh.py orientation check

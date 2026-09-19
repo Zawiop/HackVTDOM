@@ -62,6 +62,71 @@ export interface FootprintResult {
   attribution: string;
 }
 
+/** Steps 05-07 — one provider try, as reported by the generation routes. */
+export interface ProviderAttempt {
+  provider: string;
+  ok: boolean;
+  error?: string | null;
+  ms?: number | null;
+  /** Mesh only: 0 = first try, 1 = the retry. */
+  round?: number | null;
+  /** Provider was on cooldown (quota) or known to be down. */
+  skipped?: boolean | null;
+  timeout?: boolean | null;
+}
+
+/** Step 05 — POST /api/generate-image (multipart: photo, worldStatePrompt) */
+export interface GenerateImageResult {
+  /** PNG of the redesigned building: the "after" panel, and the input to generate-mesh. */
+  imageUrl: string;
+  /** The uploaded photo as stored (EXIF-rotated JPEG): the "before" panel. */
+  sourcePhotoUrl: string;
+  provider: "gemini" | "kontext";
+  model: string;
+  width: number;
+  height: number;
+  attempts: ProviderAttempt[];
+  cached: boolean;
+  elapsedMs: number;
+}
+
+/**
+ * Step 07 report. Every mesh is glTF +Y up, facade toward +Z, meters, base-center pivot at y=0.
+ * deck.gl: getOrientation [0, yaw, 90]; facade compass bearing = 180 - yaw.
+ */
+export interface MeshNormalization {
+  source: string;
+  convention: string;
+  upAxis: { from: string; rotated: boolean };
+  front: { from: string; yawDegrees: number };
+  squareUpYawDegrees: number;
+  units: { source: string; method: string; scale: number };
+  pivot: "base-center";
+  /** width = X (along the facade), depth = Z, height = Y — meters. */
+  extentsMeters: { width: number; depth: number; height: number };
+  footprint: { widthMeters: number | null; depthMeters: number | null; assumed: boolean };
+  removedFragments: number;
+  faces: number;
+  confidence: ConfidenceState;
+  warnings: string[];
+}
+
+/** Steps 06+07 — POST /api/generate-mesh. Never fails for provider reasons: falls back to the placeholder. */
+export interface GenerateMeshResult {
+  meshUrl: string;
+  /** Provider output before normalization; null for the placeholder. */
+  rawMeshUrl: string | null;
+  cutoutUrl: string;
+  confidence: ConfidenceState;
+  provider: "sf3d" | "triposr" | "triposr-local" | "placeholder";
+  fallbackReason: string | null;
+  normalization: MeshNormalization;
+  warnings: string[];
+  attempts: ProviderAttempt[];
+  cached: boolean;
+  elapsedMs: number;
+}
+
 /** Step 08 — placement transform */
 export interface PlacementRecord {
   rotationDegrees: number;

@@ -66,6 +66,74 @@ class FootprintResult(BaseModel):
     attribution: str = "© OpenStreetMap contributors"
 
 
+# --- Steps 05-07: image edit, mesh generation, mesh normalization ---
+
+
+class ProviderAttempt(BaseModel):
+    provider: str
+    ok: bool
+    error: Optional[str] = None
+    ms: Optional[int] = None
+    round: Optional[int] = None  # mesh only: 0 = first try, 1 = the retry
+    skipped: Optional[bool] = None  # provider was on cooldown (quota) or known-down
+    timeout: Optional[bool] = None
+
+
+class GenerateImageResult(BaseModel):
+    # PNG of the redesigned building: the "after" panel and the input to /generate-mesh.
+    imageUrl: str
+    # The uploaded photo as the backend stored it (EXIF-rotated JPEG): the "before" panel.
+    sourcePhotoUrl: str
+    provider: str  # 'gemini' | 'kontext'
+    model: str
+    width: int
+    height: int
+    attempts: List[ProviderAttempt]
+    cached: bool
+    elapsedMs: int
+
+
+class MeshNormalization(BaseModel):
+    source: str
+    # Always "glTF +Y up; facade faces +Z; meters; origin at base-center (y=0 is ground)".
+    # With deck.gl ScenegraphLayer getOrientation [0, yaw, 90]: upright, facade faces south at
+    # yaw 0, facade compass bearing = 180 - yaw.
+    convention: str
+    upAxis: Dict[str, Any]
+    front: Dict[str, Any]
+    squareUpYawDegrees: float
+    units: Dict[str, Any]
+    pivot: str
+    # Meters after normalization. width = X (along the facade), depth = Z, height = Y.
+    extentsMeters: Dict[str, float]
+    footprint: Dict[str, Any]
+    removedFragments: int
+    faces: int
+    confidence: ConfidenceState
+    warnings: List[str]
+
+
+class GenerateMeshResult(BaseModel):
+    # Normalized .glb, ready for step 08: meters, Y-up, base-center pivot, sized to the footprint.
+    meshUrl: str
+    rawMeshUrl: Optional[str] = None  # provider output before step 07; null for the placeholder
+    cutoutUrl: str  # background-removed image actually sent to the mesh model
+    confidence: ConfidenceState  # 'auto-high' | 'auto-low'
+    provider: str  # 'sf3d' | 'triposr' | 'triposr-local' | 'placeholder'
+    fallbackReason: Optional[str] = None
+    normalization: MeshNormalization
+    warnings: List[str]
+    attempts: List[ProviderAttempt]
+    cached: bool
+    elapsedMs: int
+
+
+class NormalizeMeshResult(BaseModel):
+    meshUrl: str
+    confidence: ConfidenceState
+    normalization: MeshNormalization
+
+
 # --- Step 08 / 11: placement + persistence (owned by teammates) ---
 
 
