@@ -53,7 +53,7 @@ Verified after the change: 77 backend tests, 19 frontend tests, clean
 | 01 geocode | `GET /api/geocode?q=` | Done, verified live |
 | 02 footprint | `POST /api/footprint` | Done, verified live |
 | 03 photo upload | multipart on `/api/generate-image` | Done (Mapillary auto-fetch not built) |
-| 04 World State presets | `GET /api/worldstates` | **Not built — 501** |
+| 04 World State presets | `GET /api/worldstates` | Done, locked server-side |
 | 05 image edit | `POST /api/generate-image` | Done (Gemini → Kontext fallback) |
 | 06 mesh | `POST /api/generate-mesh` | Done (→ placeholder fallback) |
 | 07 normalize | `POST /api/mesh/normalize` | Done |
@@ -63,13 +63,32 @@ Verified after the change: 77 backend tests, 19 frontend tests, clean
 | 11 persistence | `/api/generations`, `/api/history` | Done (Supabase or SQLite) |
 | 12 map render | frontend | Done |
 
-## The remaining gap
+## Step 04 — where the prompts live
 
-**Step 04 (World State presets) is not implemented.** The frontend sends raw
-`worldStatePrompt` text for every generation. `04-worldstate-prompts.md` says the
-five presets must live server-side so output stays consistent across buildings and
-users, and that the frontend must not send raw prompt text for the preset path.
-Right now nothing enforces that.
+The five locked descriptions are in `app/services/worldstate.py` and nowhere else.
+`GET /api/worldstates` returns the spectrum for the picker — id, label, blurb and
+`spectrumPosition` — and **deliberately no prompt text**: handing the locked strings
+to the browser invites a client to send one straight back as a freeform override,
+which is exactly the inconsistency keeping them server-side prevents.
+
+`POST /api/generate-image` now takes `worldState` (one of the five ids) for the
+preset path and resolves the description itself. `worldStatePrompt` is the freeform
+override only, and it *replaces* the preset rather than appending to it — that
+replacement is the part that literally satisfies "describe desired changes with an
+AI prompt", since a user pressing a preset button is not the one describing
+anything. The response reports `worldState` and `promptSource`
+(`preset:<id>` or `override`) so the persisted row records which was used.
+
+The picker is `frontend/src/worldstate/WorldStatePanel.tsx`, framed as a
+Present ↔ Collapsed spectrum rather than a filter grid, and it carries step 03's
+mandatory multi-file photo input alongside it.
+
+**Live generation is currently blocked by quota, not by code.** Both image
+providers are exhausted: the Gemini free tier reports `limit: 0` for
+`gemini-2.5-flash-image`, and the FLUX.1 Kontext Space has hit its ZeroGPU
+allowance. The route fails loud with 502, `retryable: true` and per-provider
+attempts, and the UI offers a retry. Budget this before judging — generate the
+demo images early and let them cache.
 
 ## Step 08 — how the transform is computed
 

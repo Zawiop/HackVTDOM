@@ -162,3 +162,75 @@ input[type="range"] { flex: 1; accent-color: var(--sn-accent); padding: 0; }
 .entry-badge.auto-low { color: var(--sn-warn); }
 
 .maplibregl-ctrl-attrib { font-size: 10px; }
+
+/* --- Step 04: World State spectrum --- */
+
+.ws-spectrum-label {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 0 4px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* One row, ordered present -> collapsed, so it reads as a spectrum rather
+   than a grid of filters. */
+.ws-spectrum {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 3px;
+}
+
+.ws-spectrum button {
+  padding: 5px 2px;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.ws-field {
+  display: block;
+  margin: 10px 0;
+}
+
+.ws-field textarea,
+.ws-field input[type="file"] {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 5px 7px;
+  border: 1px solid var(--sn-border);
+  border-radius: 4px;
+  background: var(--sn-bg);
+  color: var(--sn-text);
+  font: inherit;
+  font-size: 11px;
+}
+
+.ws-field textarea {
+  resize: vertical;
+}
+
+.ws-field textarea:focus-visible {
+  outline: none;
+  border-color: var(--sn-accent);
+}
+
+.ws-result {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.ws-result figure {
+  margin: 0;
+}
+
+.ws-result img {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--sn-border);
+  border-radius: 4px;
+}

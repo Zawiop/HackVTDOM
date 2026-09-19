@@ -69,6 +69,22 @@ class FootprintResult(BaseModel):
     attribution: str = "© OpenStreetMap contributors"
 
 
+# --- Step 04: World State ---
+
+
+class WorldStateOption(BaseModel):
+    """One point on the Present <-> Collapsed spectrum.
+
+    Carries no prompt text: the locked descriptions stay server-side so output is
+    consistent whichever building or user triggers them.
+    """
+
+    id: WorldState
+    label: str
+    blurb: str
+    spectrumPosition: int
+
+
 # --- Steps 05-07: image edit, mesh generation, mesh normalization ---
 
 
@@ -91,6 +107,10 @@ class GenerateImageResult(BaseModel):
     model: str
     width: int
     height: int
+    # Step 04: which spectrum point this was, and whether the locked preset or a
+    # freeform override supplied the description. Persisted as `world_state`.
+    worldState: Optional[WorldState] = None
+    promptSource: str = ""  # 'preset:<id>' | 'override'
     attempts: List[ProviderAttempt]
     cached: bool
     elapsedMs: int

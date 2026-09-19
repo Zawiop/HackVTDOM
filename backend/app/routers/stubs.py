@@ -10,7 +10,6 @@ router = APIRouter(tags=["not-implemented"])
 
 _OWNERS = {
     "/photo/mapillary": "03-photo-input.md",
-    "/worldstates": "04-worldstate-prompts.md",
 }
 
 
@@ -27,10 +26,4 @@ async def mapillary_photos():
     /generate-image's multipart `photo` field, which is the required path."""
     _pending("/photo/mapillary")
 
-
-@router.get("/worldstates")
-async def world_states():
-    """Step 04. Until this lands the frontend sends raw prompt text, which
-    04-worldstate-prompts.md says must not happen for the five presets."""
-    _pending("/worldstates")
 

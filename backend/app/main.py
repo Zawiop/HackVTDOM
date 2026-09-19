@@ -14,6 +14,7 @@ from .routers import (
     placement,
     propagate,
     stubs,
+    worldstate,
 )
 
 logging.basicConfig(
@@ -55,6 +56,7 @@ app.include_router(health.router, prefix="/api")
 app.include_router(geocode.router, prefix="/api")
 app.include_router(footprint.router, prefix="/api")
 app.include_router(placement.router, prefix="/api")
+app.include_router(worldstate.router, prefix="/api")
 app.include_router(generation.router, prefix="/api")
 # These two declare their own /api prefix.
 app.include_router(generations.router)

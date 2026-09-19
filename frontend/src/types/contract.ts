@@ -62,6 +62,19 @@ export interface FootprintResult {
   attribution: string;
 }
 
+/** Step 04 — GET /api/worldstates. One point on the Present ↔ Collapsed spectrum.
+ *
+ * Carries no prompt text on purpose: the five locked descriptions stay server-side
+ * so output is consistent whichever building or user triggers them. Send the `id`
+ * to /api/generate-image, never a prompt string.
+ */
+export interface WorldStateOption {
+  id: WorldState;
+  label: string;
+  blurb: string;
+  spectrumPosition: number;
+}
+
 /** Steps 05-07 — one provider try, as reported by the generation routes. */
 export interface ProviderAttempt {
   provider: string;
@@ -85,6 +98,10 @@ export interface GenerateImageResult {
   model: string;
   width: number;
   height: number;
+  /** Step 04: which spectrum point this was. Persisted as `world_state`. */
+  worldState: WorldState | null;
+  /** `preset:<id>` when the locked description was used, `override` when the user typed one. */
+  promptSource: string;
   attempts: ProviderAttempt[];
   cached: boolean;
   elapsedMs: number;
