@@ -1,0 +1,67 @@
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from .config import get_settings
+from .routers import (
+    footprint,
+    generation,
+    generations,
+    geocode,
+    health,
+    propagate,
+    stubs,
+)
+
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+)
+log = logging.getLogger("scorched")
+
+settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    log.info("store backend: %s", settings.store_backend)
+    if not settings.supabase_configured:
+        log.warning(
+            "SUPABASE_URL/SUPABASE_SECRET_KEY empty -> using local SQLite at %s",
+            settings.sqlite_path,
+        )
+    yield
+
+
+app = FastAPI(
+    title="Scorched Nebraska API",
+    version="0.1.0",
+    description="VTHacks 14 — address to AI-redesigned building, placed on a real map.",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Steps 01-02 entry, 05-07 generation, 09/11 persistence, 10 propagate.
+app.include_router(health.router, prefix="/api")
+app.include_router(geocode.router, prefix="/api")
+app.include_router(footprint.router, prefix="/api")
+app.include_router(generation.router, prefix="/api")
+# These two declare their own /api prefix.
+app.include_router(generations.router)
+app.include_router(propagate.router)
+app.include_router(stubs.router, prefix="/api")
+
+generation.setup(app)  # /outputs + /assets static files, cutout-model warmup
+
+
+@app.get("/")
+def root() -> dict:
+    return {"service": "scorched-nebraska", "store": settings.store_backend}

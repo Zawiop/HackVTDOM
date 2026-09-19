@@ -1,16 +1,16 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
 
+// The backend runs on :8000. Proxying /api keeps the frontend origin-clean and
+// means no CORS surprises when a teammate opens it from a different host.
 export default defineConfig({
   plugins: [react()],
   server: {
-    // Keeps the browser on one origin so uploads don't need CORS preflight in dev.
-    proxy: { '/api': 'http://localhost:8787', '/uploads': 'http://localhost:8787' },
+    port: 5173,
+    proxy: {
+      "/api": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/outputs": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/assets": { target: "http://127.0.0.1:8000", changeOrigin: true },
+    },
   },
-  test: {
-    environment: 'jsdom',
-    globals: true,
-    include: ['test/**/*.test.tsx', 'test/**/*.test.ts'],
-    setupFiles: ['./test/setup.ts'],
-  },
-} as never);
+});

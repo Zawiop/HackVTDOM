@@ -34,6 +34,11 @@ npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
 
+# Local dev database (SQLite fallback when SUPABASE_URL is unset)
+*.db
+*.sqlite3
+backend/local.db
+
 # Logs / caches
 *.log
 .cache/

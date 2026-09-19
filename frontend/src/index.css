@@ -1,0 +1,45 @@
+/* Entry pipeline (steps 01-02) additions on top of styles.css.
+   Uses the same --sn-* tokens so step 13's skin restyles both at once. */
+
+.entry-form {
+  display: flex;
+  gap: 6px;
+  margin: 6px 0 8px;
+}
+
+.entry-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 7px;
+  border: 1px solid var(--sn-border);
+  border-radius: 4px;
+  background: var(--sn-bg);
+  color: var(--sn-text);
+  font: inherit;
+}
+
+.entry-form input:focus-visible {
+  outline: none;
+  border-color: var(--sn-accent);
+}
+
+.entry-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.entry-badge.auto-high {
+  color: var(--sn-accent);
+}
+
+.entry-badge.auto-low {
+  color: var(--sn-warn);
+}
+
+.entry-error {
+  color: var(--sn-danger);
+}

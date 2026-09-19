@@ -1,230 +1,623 @@
-# STATUS — input layer + geometry core
+# STATUS — Scorched Nebraska
 
-Owner of steps **03** (photo input), **04** (World State prompts) and **08** (placement transform).
-Everything below is what the next person needs to know that isn't obvious from the code.
+Integrated 2026-09-19 from three branches: `ajeet/foundation-entry-pipeline`,
+`arrush/ai-generation`, `rishik/persistence-map`. Each owner's notes are kept
+below, unedited except where the merge changed a fact.
 
-Last updated: 2026-09-19.
+## What actually works end to end
 
----
+| Step | Route | State |
+| --- | --- | --- |
+| 01 geocode | `GET /api/geocode?q=` | Done, verified live |
+| 02 footprint | `POST /api/footprint` | Done, verified live |
+| 03 photo upload | multipart on `/api/generate-image` | Done (Mapillary auto-fetch not built) |
+| 04 World State presets | `GET /api/worldstates` | **Not built — 501** |
+| 05 image edit | `POST /api/generate-image` | Done (Gemini → Kontext fallback) |
+| 06 mesh | `POST /api/generate-mesh` | Done (→ placeholder fallback) |
+| 07 normalize | `POST /api/mesh/normalize` | Done |
+| 08 placement transform | `POST /api/placement` | **Not built — 501** |
+| 09 correction | `PATCH /api/generations/{id}/correction` | Done |
+| 10 propagate | `POST /api/propagate` | Done (reads pre-baked rows) |
+| 11 persistence | `/api/generations`, `/api/history` | Done (Supabase or SQLite) |
+| 12 map render | frontend | Done |
 
-## What's done
+## The two real gaps
 
-| Step | State | Where |
-|---|---|---|
-| 03 photo input | Done, verified against the live Mapillary API | `backend/src/services/{mapillary,photoInput,photoStore}.ts`, `backend/src/routes/photos.ts`, `frontend/src/components/PhotoInput.tsx` |
-| 04 World State | Done | `backend/src/services/worldState.ts`, `backend/src/routes/worldState.ts`, `frontend/src/components/WorldStateSelector.tsx` |
-| 08 placement | Done, ground-truth tested on real OSM footprints | `backend/src/services/placement.ts`, `backend/src/geo/{latlng,polygon,mesh}.ts`, `backend/src/routes/placement.ts` |
+**Step 04 (World State presets) is not implemented.** The frontend sends raw
+`worldStatePrompt` text for every generation. `04-worldstate-prompts.md` says the
+five presets must live server-side so output stays consistent across buildings and
+users, and that the frontend must not send raw prompt text for the preset path.
+Right now nothing enforces that.
 
-102 backend tests + 17 frontend tests. `cd backend && npm run verify` runs typecheck, tests and the smoke script.
+**Step 08 (placement transform) is not implemented, and this one is visible from
+the judges' seats.** It is the geometry core of the challenge — the IoU rotation
+search, proportion-preserving scale fit, collision check and ground alignment.
+Nothing computes a real transform, so rows are saved with `Placement`'s defaults.
 
----
+The practical consequence, verified in the browser: every seeded row has
+`scale: 1`, so each mesh renders as a roughly one-metre object. At the demo's
+zoom 17.2 that is about one pixel — **the map looks empty.** Correcting a single
+row to `scale: 40` via `PATCH /api/generations/{id}/correction` makes the mesh
+appear immediately, which confirms the renderer, the store and the correction
+loop are all fine and the transform is the only thing missing.
 
-## Blocking / needs someone else
+Step 02 already returns everything step 08 needs: the chosen polygon,
+`footprintWidthMeters`/`footprintDepthMeters`, the longest-edge bearing, and the
+neighbour footprints for the collision test. Step 07's `normalization.extentsMeters`
+gives the mesh's own dimensions, so the scale fit does not need to parse the `.glb`.
 
-### 1. No push access to the repo
-`git push` fails: `Permission to Zawiop/HackVTDOM.git denied to autobot433`. All the work above is
-committed **locally only**. Whoever owns the repo needs to add `autobot433` as a collaborator, then
-this branch can go up. Pulling works fine.
+## Smaller things worth knowing
 
-### 2. Steps 01/02 and 05/06/07 have not landed
-As of the last `git fetch`, `origin/main` still contains only the markdown files and a README —
-no teammate code. So step 08 has **never been run against a real `/api/footprint` response or a real
-TripoSR mesh**. It has been run against:
+**Request bodies are camelCase everywhere except `/api/propagate`**, which takes
+`source_generation_id` and `radius_meters`. Its frontend caller matches, so
+nothing is broken; it is just inconsistent if you are writing a new client.
 
-- **Real OSM footprints** — 40 real building polygons around VT pulled from the same Overpass query
-  spec 02 specifies, checked in at `backend/test/fixtures/osm-footprints.json`.
-- **Real binary glTF** — `Box.glb` and `Duck.glb` from the Khronos sample set, to exercise the GLB
-  parser including node transforms.
-- **Ground-truth meshes** — real OSM footprints extruded into solids with a known rotation, scale and
-  vertical offset baked in, so "correct" means "recovered exactly what was applied", not "looked fine".
+**`.map-root` needs two-class specificity.** `maplibre-gl.css` is imported from
+`MapView.jsx` and therefore lands after `styles.css`; its
+`.maplibregl-map { position: relative }` was beating `.map-root { position: absolute }`
+on source order and collapsing the map to zero height. Fixed as
+`.app-shell > .map-root`. Don't lower that specificity again.
 
-**What still needs checking when their routes land** is listed under *Integration checklist* below.
+## Integration decisions
 
----
+Rishik's own merge analysis recommended their modules slot into the foundation
+layout rather than the reverse; that is what happened.
 
-## Decisions someone should know about
+- `app/routes/` → `app/routers/`; `app/models.py` folded into `app/models/contracts.py`
+  (a module and a package of the same name cannot coexist), re-exported from
+  `app/models/__init__.py` so `from ..models import Generation` still works.
+- `app/geo.py` → `app/services/geo.py`. Its `meters_per_degree` returns
+  `(lat, lng)` while `geo_math.meters_per_degree` returns `(lng, lat)`; the
+  formula now lives only in `geo_math` and `geo.py` delegates with a swap, so the
+  two can never drift.
+- `main.py` mounts routers explicitly instead of auto-discovering them — the
+  parallel-agent merge risk it guarded against is over, and explicit mounting
+  makes ordering and prefixes visible.
+- One config: `app/config.py` is pydantic-settings and carries both the
+  entry-pipeline and store fields. `SUPABASE_SERVICE_ROLE_KEY` is accepted as an
+  alias for `SUPABASE_SECRET_KEY`.
+- One `/api/health`, which now reports the footprint cache *and* store health.
+- Frontend is one Vite app: TypeScript with `allowJs`, so the map/panel/correction
+  components stay `.jsx` and the contract files stay typed. React pinned to 18.3
+  to match the tested deck.gl/MapLibre stack. `App.jsx` → `MapShell.jsx`; the
+  entry pipeline mounts inside its left panel via the `entrySlot` prop.
+- Requests go through Vite's `/api` proxy, so `VITE_API_BASE_URL` is empty by default.
+- Python 3.12 is now required (teammate code uses PEP 604 `X | None`, and
+  numpy/scipy pins need 3.11+). The repo previously ran on 3.9.
 
-### The API is `backend/` + `frontend/`, not the README's layout
-`README.md` describes `apps/api/`, `apps/web/`, `packages/shared/`, and a stack of
-Mapbox + Replicate + Tripo3D. Both are stale: the `.env` files were already sitting in `backend/` and
-`frontend/`, and `markdown_files/00-overview.md` supersedes the stack (Nominatim, Gemini, TripoSR,
-MapLibre). I followed the `.env` layout and the overview. **The README is worth correcting before
-judging** — a judge reading it will be told the wrong stack.
+## Run it
 
-### Route registry in `backend/src/app.ts`
-Four people adding routes to one Express app. Each module owns one file under `src/routes/` and adds
-one line to the `ROUTES` array. Adding `/api/footprint` or `/api/mesh` should be a one-line diff.
-
-### Uploads go to local disk for now
-`backend/uploads/`, served at `/uploads/...`. Whoever does step 11 should swap the body of
-`storePhotoBytes()` in `backend/src/services/photoStore.ts` for a Supabase Storage upload — it is
-deliberately the only place that touches the filesystem, so nothing else has to change.
-
----
-
-## Things found that are worth your time
-
-### Mapillary's bbox index is non-deterministic
-Five **byte-identical** requests to a known-dense area returned **0, 2, 5, 6, 5** images. A single
-empty `data` array is frequently a false negative. Handled with a retry ladder; full write-up and a
-captured request/response pair are appended to `markdown_files/03-photo-input.md`.
-
-Also: **Blacksburg has coverage** (spec 03 listed it as untested). Burruss Hall returns 7 captures,
-nearest 23 m, most recent 2024-10-11.
-
-### Overpass returns 406 without a real User-Agent — for step 02's owner
-`overpass-api.de` returned `406 Not Acceptable` to plain `curl`, and `200` to the identical request
-with `User-Agent: ScorchedNebraskaVTHacks/1.0 (...)`. Spec 02 mentions 406s under load but attributes
-them to rate limiting; at least some of them are just the missing header. It also 429s readily —
-`https://overpass.kumi.systems/api/interpreter` worked every time the primary did not.
-
-Second thing for step 02: at `(37.2284, -80.4234)` — the coordinate with the best Mapillary coverage —
-`around:50` returns **zero** buildings. You need ~200 m to reach Davidson/Derring/Norris. Spec 02's
-"widen if a demo address returns nothing" is not an edge case here, it is the normal path.
-
-### A bug the test suite could not see
-`polygon-clipping` is CommonJS. Imported as `import * as polygonClipping`, Vite hands back a callable
-namespace but Node's ESM interop puts the functions on `.default` — so **every IoU silently returned 0
-under `npm start` while the entire test suite stayed green**. Fixed by importing the default export,
-plus a load-time assertion in `backend/src/geo/polygon.ts`.
-
-`backend/scripts/smoke.ts` (`npm run smoke`) exists specifically to catch this class of bug: it runs
-the real pipeline under tsx/Node rather than through Vite. **Worth running before judging** — it is
-about two seconds and it checks the thing that looked fine right up until it didn't.
-
----
-
-## Where step 08 deviates from `08-placement-transform.md`, and why
-
-All three of these are documented in the code at the point they happen.
-
-### 1. Candidate rotations account for the mesh's own orientation
-The spec says candidates are "the longest-edge bearing from step 02, plus that angle ± 0/90/180/270".
-Taken literally that assumes the mesh arrives with its long axis pointing north. A mesh reconstructed
-from a photograph does not — TripoSR orients output to the camera. So the heading is:
-
-```
-heading = footprintPrincipalAxis − meshPrincipalAxis + offset      offset ∈ {0, 90, 180, 270}
+```bash
+cd backend && python3.12 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt
+cp .env.example .env
+.venv/bin/python -m uvicorn app.main:app --reload --port 8000
 ```
 
-which reduces to the spec's formula when the mesh axis is 0. The four candidates are still exactly
-90° apart, which is all step 09's "try these 4 alignments" buttons need.
+```bash
+cd frontend && npm install && npm run dev
+```
 
-### 2. Principal axis comes from the minimum-area rectangle, not the longest edge
-The mesh base outline is a **convex hull**; a real OSM footprint often is not. A hull edge bridging a
-concave notch is long but says nothing about orientation. Measured on the real fixtures: the
-min-area-rectangle angle of a building and of its own convex hull agree to **0.000°** across all 12
-buildings checked, while their longest edges disagree by up to **65°**.
-
-Using the longest edge put Hancock Hall **29 m** from its footprint and Campbell Hall **28 m** away.
-With the min-area rectangle both land within **5 cm**. Step 02's longest-edge bearing is still
-accepted, cross-checked and reported in `diagnostics.longestEdgeBearingDegrees`.
-
-### 3. Confidence judges *fit quality*, not an absolute IoU
-Because the mesh outline is convex, the highest IoU any mesh could score against a given footprint is
-that footprint against its own hull — **0.48 for Campbell Hall, 0.98 for Sandy Hall**. One absolute
-threshold would flag a perfect placement on the concave buildings and wave a bad one through on the
-simple ones. So `fitQuality = iou / maxAchievableIou`, and the flag fires below 60% of achievable.
-Both numbers are in `diagnostics`.
-
-### 4. The 180° flip is reported, not flagged
-Comparing the winning rotation to the runner-up flags a lot of buildings — measured across the real
-fixtures, **44% of placements had their top two candidates within the margin, and every one of them
-was a pure 0-vs-180 pair.** A footprint is very nearly centrosymmetric, so IoU cannot tell a facade
-from its back, in principle. Flagging that would route half of all placements to manual review to
-resolve a distinction the algorithm was never able to make.
-
-Ambiguity is now judged against the best *geometrically distinguishable* alternative — the 90° turns,
-where the mesh really would sit across the footprint instead of along it. The flip margin is reported
-as `diagnostics.rotationFlipMargin` so step 09 can still offer a "turn it around" button, and all four
-candidates are in the list regardless.
-
-### 5. Collision confirms box hits against the real polygons
-Spec 08 asks for a bounding-box overlap test, and that is kept — as the cheap gate. But campus is laid
-out at roughly 45° to the compass, so axis-aligned boxes overlap constantly while the buildings are
-metres apart. A box hit is now confirmed against the actual polygons (exact clipping, already in the
-codebase) before it counts. Spec 08 also says overlap "exceeds a threshold" without saying of what:
-measured against the mesh alone, a large building swallowing a small neighbour scores ~5% and passes,
-so it is `max(overlap/mesh, overlap/neighbour)` with both reported.
-
-### Also added, not in the spec
-**Offset refinement.** Centroid-matching a convex hull to a concave footprint is off by a couple of
-metres. A shrinking-step hill climb on the same IoU objective fixes it; `diagnostics.refinementShiftMeters`
-records how far it moved.
-
-### The result on real data
-All **32** real VT footprints, each placed against a mesh built from itself and checked against all
-its real neighbours: **32/32 auto-high, zero flags**, rotation recovered to 0.00°, scale 1.0000,
-position within 7 cm. Before the two fixes above, 44% were auto-low on the flip and a further batch on
-phantom box collisions.
+```bash
+cd backend && .venv/bin/python -m pytest -q          # unit
+cd backend && .venv/bin/python tests/verify_live.py  # live contract checks
+cd frontend && npm test
+```
 
 ---
 
-## Contract for step 08 — what to send it
+# STATUS — foundation + entry pipeline (files 01, 02)
 
-`POST /api/placement`
+Owner: Ajeet. Last updated 2026-09-19.
 
-```jsonc
+Covers the project skeleton, `GET /api/geocode` (step 01) and `POST /api/footprint` (step 02).
+Everything below that says **decision** is a spot where the spec was silent or the real API
+disagreed with it — teammates should read those, because some of them change what you consume.
+
+---
+
+## Status
+
+| Piece | State |
+| --- | --- |
+| `backend/` FastAPI skeleton, all routers mounted | Done — boots, `/api/health` green |
+| `frontend/` Vite + React + TS skeleton | Done — typechecks, runs, drives both routes |
+| `GET /api/geocode` (01) | Done — verified live against Nominatim |
+| `POST /api/footprint` (02) | Done — verified live against Overpass |
+| Teammate routes | Stubbed, return HTTP 501 with a pointer to the spec file |
+
+Tests: 16 unit tests (`pytest tests/`) and 32 live contract checks
+(`.venv/bin/python tests/verify_live.py`) — all passing as of 2026-09-19.
+
+## Run it
+
+```bash
+cd backend && python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m uvicorn app.main:app --reload --port 8000
+```
+
+```bash
+cd frontend && npm install && npm run dev
+```
+
+Copy `backend/.env.example` → `backend/.env` and `frontend/.env.example` → `frontend/.env`.
+Neither `.env` is committed and neither should ever be.
+
+---
+
+## Blocker resolved: there is no `00b-architecture-contract.md`
+
+The brief named `00b-architecture-contract.md` as the fixed contract for folder structure,
+stack, routes and env names. **That file does not exist** — not in `main`, not on any branch,
+not in any PR. Confirmed: `00-overview.md` is the contract, and it covers services and build
+order but not app structure. The structure below is therefore derived, not handed down. If
+anyone has a different structure in flight, say so now and I will move to match it.
+
+### Folder layout
+
+```
+backend/
+  app/
+    main.py                 # FastAPI app, CORS, router mounts
+    config.py               # env-backed settings
+    models/contracts.py     # Pydantic models = the API contract
+    routers/                # geocode, footprint, health, stubs
+    services/               # nominatim, overpass, geo_math, cache
+  tests/
+  requirements.txt
+frontend/
+  src/types/contract.ts     # mirrors models/contracts.py — change both together
+  src/api/client.ts
+  src/App.tsx
+```
+
+### Routes
+
+Every route is under `/api`. The ones marked *stub* return 501 until their owner fills them in.
+
+| Route | Step | Spec file |
+| --- | --- | --- |
+| `GET /health` | — | — |
+| `GET /geocode?q=` | 01 | `01-geocode-nominatim.md` |
+| `POST /footprint` | 02 | `02-footprint-overpass.md` |
+| `GET /photo/mapillary`, `POST /photo/upload` | 03 | *stub* |
+| `GET /worldstates` | 04 | *stub* |
+| `POST /generate/image` | 05 | *stub* |
+| `POST /generate/mesh` | 06 | *stub* |
+| `POST /mesh/normalize` | 07 | *stub* |
+| `POST /placement` | 08 | *stub* |
+| `GET /generations`, `POST /generations` | 09/11 | *stub* |
+| `POST /propagate` | 10 | *stub* |
+
+### Env var names
+
+Backend (`backend/.env`): `NOMINATIM_USER_AGENT`, `NOMINATIM_BASE_URL`, `OVERPASS_PRIMARY_URL`,
+`OVERPASS_MIRROR_URL`, `OVERPASS_BACKOFF_SECONDS`, `MAPILLARY_ACCESS_TOKEN`, `GEMINI_API_KEY`,
+`HF_TOKEN`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
+
+Frontend (`frontend/.env`): `VITE_API_BASE_URL`, `VITE_SUPABASE_URL`,
+`VITE_SUPABASE_PUBLISHABLE_KEY`. Only `VITE_`-prefixed vars reach the browser — no secret keys there.
+
+---
+
+## The one that will bite you: the spec's Overpass query misses real buildings
+
+**`02-footprint-overpass.md` specifies `way["building"](around:50,...)`. That silently returns
+nothing for any building mapped as a multipolygon relation.**
+
+Verified: a 250 m way-only pull centred on Torgersen Hall's own geocoded coordinates does not
+contain Torgersen Hall at all. It returned Pearson Hall West, 40 m away, with high confidence —
+the exact "building growing out of the wrong footprint" failure mode the spec warns about, and
+it would have been invisible until a judge was looking at it.
+
+VT buildings confirmed to be relations, i.e. invisible to the spec's query:
+**Torgersen Hall, Newman Library, Kelly Hall, Main Eggleston Hall, East Eggleston Hall.**
+
+**Decision:** the query now asks for ways *and* relations, and relation outer member ways are
+stitched into a single ring (`_stitch_outer_ring` in `routers/footprint.py`). Torgersen now
+resolves correctly: relation 1074689, 175.31 × 72.27 m, bearing 142.16°, 88-point polygon,
+query point inside it.
+
+---
+
+## Other decisions where the spec was silent
+
+**Confidence vocabulary is `auto-high` / `auto-low`, not `high` / `low`.**
+File 02 says `confidence: "low"`, but files 08, 09 and 11 all use
+`auto-high | auto-low | manually-verified`. One vocabulary across the pipeline beats a literal
+reading of one file — step 09's UI and step 11's `confidence_state` column need to agree.
+
+**`footprintWidthMeters` / `footprintDepthMeters` are oriented to `rotationDegrees`, not
+axis-aligned.** File 02 says "bounding box", but a raw lat/lng box around a building sitting at
+45° to the compass reports a near-square: for a real 80 × 40 m building it gives 84.85 × 84.85,
+overstating the short axis by more than 2×. Step 08 fits mesh scale to these numbers, so an
+axis-aligned box would corrupt every rotated building's scale. The values returned are the
+extent *along* the longest-edge bearing and *across* it. Covered by
+`test_axis_aligned_box_would_overstate_a_rotated_building`.
+
+**"Multiple equally-close candidates" is now a concrete rule.** In order:
+1. Exactly one candidate polygon contains the point → select it, `auto-high`.
+2. More than one contains it → `auto-low`, `selected: null`, all candidates returned.
+3. None contains it, one candidate within the match radius → select it, `auto-high`.
+4. None contains it, nearest two within **5 m** of each other → `auto-low`, `selected: null`.
+5. Otherwise the clear nearest → `auto-high`.
+
+`selected` is `null` whenever confidence is `auto-low` and there is real ambiguity. **Step 09:
+never fall back to `candidates[0]` when `selected` is null — that is exactly the auto-pick the
+spec forbids.** Every response also carries a human-readable `reason`.
+
+**One Overpass query serves both the match and the neighbours.** File 02 says `around:50`;
+file 10 wants neighbours out to 250 m *without re-fetching*. The route issues a single 250 m
+query and partitions: buildings within 50 m become `candidates`, the rest become `neighbors`.
+Steps 08 and 10 should read `neighbors` off the step 02 response rather than calling Overpass.
+
+**Backoff is deferred, not immediate.** File 02 says back off 30 s on 429/406 before retrying.
+Sleeping the instant the primary rate-limits would stall the request 30 s while healthy mirrors
+sit untried, so: every endpoint gets one attempt first, then the 30 s wait, then only the
+rate-limited endpoints are retried. Same policy, roughly a minute faster on a bad day.
+
+**Cache key rounds coordinates to 4 dp (~11 m), keyed with the radius.** In-memory for now;
+swap for a Supabase table when step 11 lands if we want it to survive a restart. Verified: a
+repeat lookup drops from ~6 s to ~11 ms, and ~5 m of coordinate jitter still hits.
+
+**Geocode "not found" is HTTP 200 with `found: false`**, not a 404 — the spec calls for a
+user-facing state, not a crash. A 502 means the *service* failed, and the UI should offer the
+click-the-map path.
+
+---
+
+## External APIs behaving differently than documented
+
+**Both spec'd Overpass endpoints were down at the same time** on 2026-09-19:
+`overpass-api.de` returned 406, `overpass.kumi.systems` timed out at 40 s, and
+`overpass.private.coffee` also timed out. Only `maps.mail.ru` answered (15.7 s). Two endpoints
+is not enough margin for demo day, so `OVERPASS_EXTRA_MIRRORS` adds two more, tried in order.
+The primary recovered ~10 minutes later. **Pre-cache the demo buildings the night before —
+this is not a hypothetical risk, it happened twice during this build.**
+
+**Nominatim 403s repeated direct `curl` calls** even with a correct `User-Agent`, while the same
+requests through the app kept working. The app throttles to 1 request/second server-side
+(`nominatim_min_interval_seconds`). Don't hammer it from the shell while testing.
+
+---
+
+## Needs a decision from the team
+
+1. **`NOMINATIM_USER_AGENT` still has a placeholder email.** Nominatim's usage policy requires a
+   real contact address and blocks generic agents. Someone put a real team address in
+   `backend/.env` before demo day.
+2. **The cache is in-memory**, so it dies with the server. If we want pre-baked demo buildings to
+   survive a restart during judging, step 11's owner and I should agree on a Supabase table.
+3. **`README.md` still describes the original Node/Express + `apps/api` + `packages/shared`
+   layout**, which is not what we built. I updated the stack and layout sections to match; flag
+   it if that collides with anything.
+
+---
+---
+
+# STATUS — AI generation: image edit, mesh generation, mesh normalization (files 05, 06, 07)
+
+Last updated 2026-09-19. Code: `backend/app/generation/` + `backend/app/routers/generation.py`.
+
+## State
+
+| Piece | State |
+| --- | --- |
+| `POST /api/generate-image` (05) | Done. Verified live: real photo → real redesigned PNG in ~33–40 s |
+| `POST /api/generate-mesh` (06 + 07) | Done. Verified live: image → normalized textured .glb in ~10–20 s |
+| `POST /api/mesh/normalize` (07 standalone) | Done: re-fits an existing .glb, e.g. once the real footprint is known |
+| `GET /api/generate/status` | Provider cooldowns + live HF Space states |
+| Local TripoSR mesh provider | Done (optional install): same TripoSR model run on this Mac, ~5 s on MPS, no quota |
+| Placeholder fallback mesh | Committed: `backend/assets/placeholder.glb`, served at `/assets/placeholder.glb` |
+| Real sample outputs | Committed: `backend/assets/samples/` (Burruss Hall, scorched + flooded) |
+
+The foundation's stub paths `/api/generate/image` and `/api/generate/mesh` are served too (same
+handlers), and their 501 stubs are removed. Tests, all passing: 24 offline (`pytest`), 14 live
+(`pytest -m live`, needs the server running, calls the real Spaces), 1 heavy (`pytest -m heavy`,
+local TripoSR through the real route). The foundation's 16 tests still pass on the bumped pins.
+
+## PERSISTENT FAILURES (external, not fixable in our code)
+
+1. **Gemini has no free image quota on our key.** Every image-output model
+   (`gemini-2.5-flash-image`, `gemini-3.1-flash-image`, `gemini-3-pro-image`, the `-lite`/`-preview`
+   variants, `gemini-omni-*`) returns `429 RESOURCE_EXHAUSTED ... limit: 0`. The allocation is zero,
+   not used up. The key itself works (text models answer). So file 00's "Gemini free tier for
+   image editing" premise is false today. **Replacement:** FLUX.1 Kontext [dev] via the public HF
+   Space `black-forest-labs/FLUX.1-Kontext-Dev` (free, uses `HF_TOKEN`). Gemini stays first in the
+   chain; on a `limit: 0` 429 it's skipped for an hour, so it costs ~0.6 s once per hour.
+2. **The `stabilityai/TripoSR` Space is broken** (`RUNTIME_ERROR` since its 2026-05-24 rebuild:
+   its `torchmcubes` dependency no longer compiles). No call can succeed and no public duplicate is
+   running. **Replacement:** `stabilityai/stable-fast-3d` (SF3D), Stability's successor model, which
+   outputs a textured `.glb` directly. TripoSR stays first in the chain behind a cached runtime-stage
+   check (skipped in ~0 ms while it's down).
+
+3. **Our HF token ran out of Kontext ZeroGPU runs** after ~5 image edits today:
+   `AppError: You have exceeded your ZeroGPU runs limit. Subscribe to Hugging Face PRO to get 40 min
+   of ZeroGPU quota a day`. SF3D kept working (its runs are cheap). Until the quota refills, uncached
+   `/api/generate-image` calls return `502 {retryable: true}` with that message in `attempts`, and
+   cached photo+prompt pairs still return instantly. **So generate demo images early and reuse
+   them.** A third free image path would need the HF token to have the "Make calls to Inference
+   Providers" permission (currently `403` for fine-grained token `ris-011`). Only the account owner
+   can change that, and I didn't wire a provider whose response I couldn't capture.
+
+**Mesh-side mitigation, done: local TripoSR.** The mesh chain is `triposr` (Space, skipped while
+down) → `sf3d` (Space) → **`triposr-local`** → placeholder. `triposr-local` runs the same open
+TripoSR model on this machine (Apple MPS, ~5 s per mesh, no queue, no quota). The only thing that
+broke the Space, `torchmcubes`, is swapped for PyMCubes. Its axis convention (+Z up, facade +X)
+comes from TripoSR's own camera code and was confirmed by render. Optional install:
+`backend/requirements-local-mesh.txt` + one `git clone` (see `app/generation/triposr_local.py`).
+Without it the chain skips straight to the placeholder.
+
+Both captured request/response pairs are in files 05 and 06 (CAPTURED EXAMPLE blocks).
+
+## Contract (build against this; Pydantic models in `models/contracts.py`, TS in `types/contract.ts`)
+
+**`POST /api/generate-image`**: `multipart/form-data`: `photo` (file), `worldStatePrompt` (text),
+optional `force=true` (skip cache).
+→ `200 { imageUrl, sourcePhotoUrl, provider, model, width, height, attempts[], cached, elapsedMs }`.
+`imageUrl` is a PNG (the "after" panel); `sourcePhotoUrl` is the EXIF-corrected upload (the "before").
+Errors: `400` bad input, `415` not an image, `502`/`504` generation failed/timed out with
+`{ detail, retryable: true, attempts }`. Hard budget 60 s (`IMAGE_TIMEOUT_S`).
+
+**`POST /api/generate-mesh`**: JSON, multipart or urlencoded: `imageUrl` (e.g. the generate-image
+output) or `image` (file), plus `footprintWidthMeters`, `footprintDepthMeters` from step 02 (optional,
+but pass them), optional `force`.
+→ `200 { meshUrl, rawMeshUrl, cutoutUrl, confidence: "auto-high"|"auto-low", provider:
+"sf3d"|"triposr"|"triposr-local"|"placeholder", fallbackReason, normalization{...}, warnings[], attempts[], cached,
+elapsedMs }`. **Never fails for provider reasons.** On failure or timeout (75 s per attempt, retried
+once) you get the placeholder, `confidence: "auto-low"` and a `fallbackReason`. `400`/`415` only for
+bad input.
+
+**Mesh convention** (details in file 07 and `backend/assets/samples/README.md`): glTF +Y up,
+facade faces +Z, meters, sized to the footprint's longest side, base-center pivot at y = 0, walls
+squared to X/Z, `NORMAL` included. In deck.gl: `getOrientation [0, yaw, 90]`. **Facade compass
+bearing = 180 − yaw** (verified in a real render: yaw 0 → facade south, yaw 90 → east).
+
+Files are served by the backend at `PUBLIC_BASE_URL/outputs/...` (default
+`http://localhost:8000`). Set `PUBLIC_BASE_URL` if the frontend reaches the backend at another host.
+
+## Decisions where the spec was silent or wrong
+
+- **Prompt wrapping.** Handing Kontext a bare scene description made it *replace* Burruss Hall with
+  a generic house. The World State text is now wrapped as "Edit this photo of a real building. Keep
+  the exact same building ... Change only its condition ... to match this scene: {prompt}", after
+  which the tower, wings and entrance survive every edit tested. Step 04's preset strings can stay
+  pure scene descriptions.
+- **Background cutout before image→3D.** SF3D is an object model; a street photo must be cut out
+  first. Local `rembg` `birefnet-general` (~5–8 s warm, preloaded at startup, model cached in
+  `backend/.cache/`) kept the whole building. `u2net` lost a wing and `isnet` grabbed only the flag.
+- **SF3D's Gradio API is misdocumented** by `view_api()`: `/run_button` has hidden Button/State
+  inputs, so the documented 5-argument call fails. We seed session state via `/requires_bg_remove`
+  and pass all 7 inputs explicitly (see file 06).
+- **Normalization squares the mesh up** (photos are taken at an angle; raw meshes sat 22–27° off)
+  and **drops floaters using a UV-seam-aware weld**. A plain `split()` treated 829 texture islands
+  as "fragments" and would have shredded the surface.
+- **Every mesh gets a material and a texture.** Two deck.gl gotchas found in the render harness:
+  a glTF primitive with *no material* draws nothing at all in `ScenegraphLayer`, and *vertex colors*
+  (`COLOR_0`) are ignored by its PBR shader (flat grey). Normalization now patches in a material for
+  any material-less primitive. Local TripoSR's vertex colors are baked into a small per-face
+  texture atlas after decimating to 30k faces.
+- **Confidence uses the team vocabulary** `auto-high`/`auto-low` (file 06 literally says `"low"`).
+- **Caching**: results are content-addressed (`backend/outputs/`, git-ignored) and persisted in
+  `outputs/cache.json`, so a repeat request for the same photo + prompt (or image + footprint) is
+  instant and survives restarts. Only real generations are cached, never placeholder fallbacks.
+- **Dependency pins bumped** in `backend/requirements.txt`: `google-genai` needs `pydantic>=2.12.5`,
+  so the foundation's `pydantic==2.10.4` could not stay. FastAPI/uvicorn/pytest now match the
+  persistence branch's pins (0.141.1 / 0.53.0 / 9.1.1). Starlette 1.x dropped
+  `add_event_handler`, so the startup warmup wraps `app.router.lifespan_context` instead.
+
+## Risks for demo day
+
+- **HF ZeroGPU daily quota (already hit once, see #3).** Both Spaces bill our free `HF_TOKEN`.
+  On a quota error the provider goes on a 10-minute cooldown. The mesh route then falls through to
+  local TripoSR or the placeholder, and the image route returns 502, retryable. **Pre-generate demo
+  buildings early.** Results are cached on disk and replay instantly.
+- Public queues: Kontext took 33 s idle and 40 s under light load. Budget is 60 s per the spec.
+
+## Needs a decision from the team
+
+1. If anyone has a Google project with image quota (paid), setting that `GEMINI_API_KEY` makes
+   Gemini the live provider with no code change. Otherwise Kontext is the image path.
+2. The HF token owner could enable "Make calls to Inference Providers" on the token (free monthly
+   credits). That opens a second image path once someone captures its response.
+3. Decide which 2-3 demo buildings + World States to pre-generate while Kontext quota is available.
+
+---
+
+# STATUS — persistence + map (files 11, 12, 09, 10)
+
+Owner: Rishik. Last updated 2026-09-19.
+
+## State: all four files implemented, tested, and verified running end to end.
+
+56 tests pass (37 backend pytest, 19 frontend vitest). The map renders real 3D
+meshes at real VT coordinates, the correction loop writes back to the database,
+and Propagate reveals pre-baked neighbours with the camera pulling out for the
+reveal.
+
+---
+
+## BLOCKERS (need a human)
+
+### 1. `SUPABASE_URL` is empty — running on a local SQLite fallback
+
+`backend/.env` and `frontend/.env` both have the **keys** set but the **URL
+blank**. The new `sb_secret_…` / `sb_publishable_…` key format does not embed the
+project ref, so the URL cannot be derived from the key — it has to be copied from
+the dashboard.
+
+**Fix (2 minutes):** Supabase dashboard → Project Settings → Data API → Project
+URL (looks like `https://abcdefghijkl.supabase.co`). Paste it into
+`SUPABASE_URL` in `backend/.env` and `VITE_SUPABASE_URL` in `frontend/.env`.
+
+**Until then**, nothing is blocked: the store layer auto-selects a local SQLite
+file (`backend/local.db`) with an identical schema and identical semantics.
+Switching to Supabase is that one env var — no code change. `GET /api/health`
+reports which backend is live.
+
+### 2. The `generations` table still has to be created once
+
+PostgREST cannot issue DDL, so this cannot be automated with the keys available.
+Paste `backend/sql/001_generations.sql` into the Supabase SQL editor and run it.
+It creates the table, the indexes, and a read-only RLS policy for the anon key.
+
+### 3. Waiting on teammates (not blocking my work)
+
+- Real `mesh_url` values from steps 06/07 — every seeded row currently points at
+  `frontend/public/placeholder.glb`.
+- Real `source_photo` / `artifact` URLs from steps 03/05 — the panel already
+  degrades to a "no image" placeholder, so broken URLs do not break the UI.
+- Neighbour footprints from step 02 — `POST /api/propagate` accepts an optional
+  `neighbors` array and reports any that have no pre-baked row as `pending`.
+  Nothing supplies it yet, so `pending` is always empty today.
+
+---
+
+## API contract (build against this)
+
+Base URL is proxied at `/api` from the Vite dev server.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/health` | which store backend is live |
+| POST | `/api/generations` | **save one generation** (201) |
+| GET | `/api/generations` | every row — the map layer's data |
+| GET | `/api/generations/{id}` | one row |
+| GET | `/api/history?address=…` | that address's sequence, oldest first |
+| PATCH | `/api/generations/{id}/correction` | step 09 write-back |
+| POST | `/api/propagate` | step 10 reveal |
+| GET | `/api/propagate/radii` | `[50, 100, 250]` |
+
+### POST /api/generations — what steps 01-08 should send
+
+```json
 {
-  "footprint": {
-    "polygon":   { "id": 26210244, "geometry": [{ "lat": 37.2, "lng": -80.4 }, ...] },
-    "neighbors": [ { "id": 43082478, "geometry": [...] }, ... ],   // from step 02's cache, not a re-fetch
-    "footprintWidthMeters": 60.2,          // optional; cross-checked, not trusted
-    "footprintDepthMeters": 31.4,          // optional
-    "longestEdgeBearingDegrees": 135.6,    // optional
-    "confidence": "high"                   // "low" propagates into the record
-  },
-  "mesh": {
-    "path": "/abs/path/normalized.glb",    // or "url", or "bytesBase64"
-    "upAxis": "y"                          // glTF default; step 07 owns this
+  "address": "Burruss Hall, Blacksburg, VA",
+  "lat": 37.2287,
+  "lng": -80.4229,
+  "source_photo": "https://…/original.jpg",
+  "artifact": "https://…/redesigned.png",
+  "mesh_url": "https://…/building.glb",
+  "world_state": "reclaimed",
+  "placement": {
+    "rotationDegrees": 47.5,
+    "scale": 1.83,
+    "position": [37.2287, -80.4229, 0.0],
+    "confidence": "auto-high",
+    "scoredRotationCandidates": [{ "rotationDegrees": 47.5, "iou": 0.81 }]
   }
 }
 ```
 
-`footprint.geometry` is accepted as an alias for `footprint.polygon.geometry`.
-Response is the `PlacementTransform` in `backend/src/types/placement.ts` — the five fields spec 08
-names, plus `scaleXYZ`, `flags`, `collision`, `ground` and `diagnostics`.
-
-### For step 12 (deck.gl)
-`scaleXYZ` is in renderer order and assumes the ScenegraphLayer's own transform order —
-**scale in model space, then rotate, then translate**. The IoU search mirrors that order exactly, so a
-score computed here is the score you see on the map. Applying them in a different order will place
-non-uniformly-scaled meshes wrong. `position` is `[lat, lng, z]`; `z` is metres, and is 0 whenever
-step 07 base-centred the pivot properly.
-
-### For step 09 (correction UI)
-`scoredRotationCandidates` is the full sorted list of four, each with its `iou`, `scale` and
-`coverage` — nothing is discarded. `flags[]` carries a `subStep` of
-`footprint | rotation | scale | collision | ground | mesh`, so the UI can tell a step-02 footprint
-problem apart from a step-08 placement problem. Confidence is **derived from the flags at the end**
-rather than assigned as it goes, so there is no intermediate value for a later clean check to
-overwrite — spec 08's explicit requirement.
+Notes:
+- `placement` accepts **extra fields** and stores them verbatim — add
+  `footprintIoU`, `collisionFlag`, whatever step 08 produces, and persistence
+  will not drop it.
+- `confidence_state` is optional; it defaults to `placement.confidence`.
+- Top-level unknown fields are **rejected with 422** on purpose, so a typo in a
+  field name fails loudly instead of silently vanishing.
+- `position` is `[lat, lng, z]`. The map converts to deck.gl's `[lng, lat, z]`.
 
 ---
 
-## Integration checklist — when 01/02 and 05/06/07 land
+## Decisions worth knowing
 
-1. **Run step 08 against a real step 02 response.** If `diagnostics.footprintDerivedMismatch` is
-   populated, step 02's width/depth/bearing disagree with the polygon it sent. Placement uses values
-   computed from the polygon and flags the disagreement rather than silently picking one.
-2. **Run step 08 against a real TripoSR mesh.** Two flags to watch for, both pointing upstream:
-   - `implausible-scale` — the mesh is not in metres; that is step 07's unit check.
-   - `pivot-not-base-centred` — step 07 did not base-centre the pivot. Placement corrects for it and
-     says by how much, but step 07 should fix it at source.
-3. **Confirm the mesh up-axis.** Default is `y` (glTF). If step 07 emits Z-up, pass `upAxis: "z"` —
-   this is **not** auto-detected on purpose. Guessing it would silently paper over a step 07 bug, and
-   a mesh read on the wrong axis produces a wrong-but-plausible footprint.
-4. **Check `fitQuality` on a real generated mesh.** TripoSR output from a single photo will not match
-   an OSM footprint as well as the ground-truth fixtures do. If good placements routinely land in the
-   0.4–0.6 band, `minFitQuality` (default 0.6) wants lowering — the threshold is a `PlacementOptions`
-   field, not a constant, for exactly that reason.
-5. **Pre-cache the demo buildings.** Spec 00 and spec 02 both say so. Davidson, Derring, Norris and
-   War Memorial Hall are already captured in the test fixtures and all place cleanly.
+**One row per generation, never one per address.** No upsert path, no unique
+constraint on `address`. The history timeline in the click panel is the visible
+proof — Burruss Hall currently shows `reclaimed → flooded → scorched`.
+
+**Write failures are loud.** Every store method raises; nothing returns a falsy
+sentinel. Route handlers log `PERSISTENCE FAILURE` and return 502, and the
+frontend client throws rather than resolving to `null`. A generation that looks
+saved but never persisted would quietly break both history and Propagate.
+
+**Propagate reveals, it does not generate.** Per file 10, clicking Propagate
+during judging queries pre-baked rows within the radius that share the source's
+World State. Neighbours with no row come back as `pending` and are reported
+honestly ("4 revealed · 2 not pre-baked") rather than silently omitted.
+
+**Router auto-discovery.** `app/main.py` mounts every `router` it finds in
+`app/routes/*.py`. Drop a file in; do not edit `main.py`. Four of us are working
+in parallel and that file would otherwise be a constant merge conflict.
+
+**Esri satellite tiles** are added alongside the keyless OSM raster tiles for the
+panel's satellite toggle (file 12 asks for one). Also keyless, attribution
+included. OSM stays the default — no MapTiler key anywhere.
 
 ---
 
-## Not mine, not touched
+## Two corrections to file 12, both verified against running code
 
-Steps 01, 02, 05, 06, 07, 09, 10, 11, 12, 13. The only shared files I edited are
-`backend/src/app.ts` (route registry), `.gitignore`, and `markdown_files/03-photo-input.md`
-(appended the verified API capture that file asks for).
+1. **`scenegraph: d => d.mesh_url` does not work in deck.gl 9.** That prop is
+   typed `any` (URL / parsed glTF / Promise), *not* an `Accessor`. Rows are
+   grouped by `mesh_url` with one `ScenegraphLayer` per distinct mesh instead.
+2. **`roll: 90` is correct and load-bearing.** Verified visually: at `roll: 90`
+   buildings stand upright, at `roll: 0` they lie flat. Holds as long as step 07
+   keeps emitting Y-up glTF. The left panel has a live axis-check slider if that
+   ever changes. Meshes should also carry `NORMAL` or shading goes flat.
+
+---
+
+## Merging with `ajeet/foundation-entry-pipeline` (checked 2026-09-19)
+
+I compared both branches. **The API contract matches — that was the big risk and
+it is retired.** Their `Generation` and `PlacementRecord` models use the same
+field names, the same `position: [lat, lng, z]` ordering, the same
+`confidence_state` values and the same `/api` prefix as mine. Their
+`routers/stubs.py` explicitly reserves `/generations` and `/propagate` for this
+work with a 501 and a pointer to files 10/11. Nothing needs renegotiating.
+
+What does conflict is **structure, not semantics**. 12 files exist on both
+branches:
+
+| Theirs | Mine | Note |
+| --- | --- | --- |
+| `backend/app/routers/` | `backend/app/routes/` | same idea, different name |
+| `backend/app/models/contracts.py` | `backend/app/models.py` | package vs module |
+| `backend/app/main.py` | `backend/app/main.py` | they mount explicitly, I auto-discover |
+| `frontend/src/**/*.tsx` (TypeScript) | `frontend/src/**/*.jsx` (JavaScript) | — |
+| `config.py`, `package.json`, `index.html`, `.env.example`, `.claude/launch.json`, `STATUS.md` | same | straight duplicates |
+
+**Recommended resolution — theirs wins on structure, mine slots in.** They built
+the skeleton deliberately, stubs and all, so the lower-friction direction is to
+adapt my modules into their layout rather than the reverse:
+
+1. Move `app/routes/generations.py` and `app/routes/propagate.py` into
+   `app/routers/`, delete `routers/stubs.py`'s `/generations` + `/propagate`
+   entries, and add two `include_router(..., prefix="/api")` lines to their
+   `main.py`. My auto-discovery in `main.py` is then redundant — drop it.
+2. Move my `models.py` classes into their `models/contracts.py`. The shapes
+   already agree; `GenerationCreate`, `Correction` and `propagated_from` are
+   additive.
+3. `app/store/` and `app/geo.py` are unique to me and conflict with nothing.
+   Their `services/geo_math.py` overlaps `app/geo.py` — keep one.
+4. Frontend: their `.tsx` and my `.jsx` coexist under one Vite config, but my
+   components should be ported to TypeScript to match. Merge the two
+   `package.json` dependency lists (they need mine: deck.gl, maplibre-gl,
+   loaders.gl).
+
+I have **not** done any of this — it edits their files, and the other two agents
+have not pushed yet, so the merge is better done once with everyone's work in
+hand.
+
+---
+
+## Running it
+
+```bash
+# backend  (http://127.0.0.1:8000)
+cd backend && ./.venv/bin/uvicorn app.main:app --reload --port 8000
+
+# demo data — re-run before judging to reset the flagged row
+cd backend && ./.venv/bin/python seed/seed_demo.py --reset
+
+# frontend (http://localhost:5173)
+cd frontend && npm run dev
+
+# tests
+cd backend && ./.venv/bin/python -m pytest -q
+cd frontend && npm test
+```
+
+Seeded demo: Burruss Hall (3 World States → timeline), 3 pre-baked neighbours at
+41m / 90m / 185m, one deliberately `auto-low` row (McBryde Hall) to demo the
+correction loop, and Lane Stadium at 420m to prove the radius filter excludes.
