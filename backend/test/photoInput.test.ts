@@ -9,6 +9,10 @@ const BURRUSS = { lat: 37.2284, lng: -80.4234 };
 /** Open water, hundreds of km from any road — a genuine no-coverage control. */
 const LAKE_SUPERIOR = { lat: 47.7, lng: -87.5 };
 
+/** `Response.json()` is `unknown` under strict TS; tests assert on shapes directly. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const readJson = (res: Response): Promise<any> => res.json() as Promise<any>;
+
 let server: TestServer;
 beforeAll(async () => {
   server = await startTestServer();
@@ -56,7 +60,7 @@ describe('POST /api/photos/source — Path A, manual upload (the required path)'
     const res = await fetch(`${server.baseUrl}/api/photos/source`, { method: 'POST', body: form });
     expect(res.status).toBe(200);
 
-    const body = await res.json();
+    const body = await readJson(res);
     expect(body.photos).toHaveLength(3);
     expect(body.photos.map((p: any) => p.originalName)).toEqual([
       'front.png',
@@ -73,7 +77,7 @@ describe('POST /api/photos/source — Path A, manual upload (the required path)'
     form.append('photos', filePart(PNG_1X1, 'burruss.png', 'image/png'));
 
     const res = await fetch(`${server.baseUrl}/api/photos/source`, { method: 'POST', body: form });
-    const body = await res.json();
+    const body = await readJson(res);
 
     const stored = body.photos[0];
     expect(stored.sizeBytes).toBe(PNG_1X1.byteLength);
@@ -91,9 +95,9 @@ describe('POST /api/photos/source — Path A, manual upload (the required path)'
     form.append('photos', filePart(PNG_1X1, 'a.png', 'image/png'));
     form.append('photos', filePart(PNG_1X1, 'b.png', 'image/png'));
 
-    const body = await (
-      await fetch(`${server.baseUrl}/api/photos/source`, { method: 'POST', body: form })
-    ).json();
+    const body = await readJson(
+      await fetch(`${server.baseUrl}/api/photos/source`, { method: 'POST', body: form }),
+      );
 
     expect(new Set(body.photos.map((p: any) => p.id)).size).toBe(2);
     expect(new Set(body.photos.map((p: any) => p.url)).size).toBe(2);
@@ -105,7 +109,7 @@ describe('POST /api/photos/source — Path A, manual upload (the required path)'
 
     const res = await fetch(`${server.baseUrl}/api/photos/source`, { method: 'POST', body: form });
     expect(res.status).toBe(415);
-    expect((await res.json()).error).toMatch(/unsupported photo type/i);
+    expect((await readJson(res)).error).toMatch(/unsupported photo type/i);
   });
 
   it('skips the Mapillary round trip entirely when uploads are present', async () => {
@@ -114,9 +118,9 @@ describe('POST /api/photos/source — Path A, manual upload (the required path)'
     form.append('lat', String(BURRUSS.lat));
     form.append('lng', String(BURRUSS.lng));
 
-    const body = await (
-      await fetch(`${server.baseUrl}/api/photos/source`, { method: 'POST', body: form })
-    ).json();
+    const body = await readJson(
+      await fetch(`${server.baseUrl}/api/photos/source`, { method: 'POST', body: form }),
+      );
 
     expect(body.mapillary.attempted).toBe(false);
     expect(body.photos).toHaveLength(1);
@@ -130,14 +134,14 @@ describe('POST /api/photos/source — Path A, manual upload (the required path)'
     });
 
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await readJson(res);
     expect(body.photos).toEqual([]);
     expect(body.primary).toBeNull();
     expect(body.requiresManualUpload).toBe(true);
   });
 
   it('advertises multi-file support in its constraints', async () => {
-    const body = await (await fetch(`${server.baseUrl}/api/photos/constraints`)).json();
+    const body = await readJson(await fetch(`${server.baseUrl}/api/photos/constraints`));
     expect(body.multiple).toBe(true);
     expect(body.maxFiles).toBeGreaterThan(1);
     expect(body.acceptedMimeTypes).toContain('image/jpeg');
@@ -189,7 +193,7 @@ describe('Path B — Mapillary convenience layer (live API)', () => {
     );
     expect(res.status).toBe(200);
 
-    const body = await res.json();
+    const body = await readJson(res);
     expect(body.photos).toEqual([]);
     expect(body.requiresManualUpload).toBe(true);
     expect(body.error).toBeUndefined();
@@ -198,7 +202,7 @@ describe('Path B — Mapillary convenience layer (live API)', () => {
   it('validates coordinates instead of forwarding junk to Mapillary', async () => {
     const res = await fetch(`${server.baseUrl}/api/photos/mapillary?lat=999&lng=0`);
     expect(res.status).toBe(400);
-    expect((await res.json()).error).toMatch(/lat/);
+    expect((await readJson(res)).error).toMatch(/lat/);
   });
 
   it('POST /api/photos/source falls back to Mapillary when no file is supplied', async () => {
@@ -206,9 +210,9 @@ describe('Path B — Mapillary convenience layer (live API)', () => {
     form.append('lat', String(BURRUSS.lat));
     form.append('lng', String(BURRUSS.lng));
 
-    const body = await (
-      await fetch(`${server.baseUrl}/api/photos/source`, { method: 'POST', body: form })
-    ).json();
+    const body = await readJson(
+      await fetch(`${server.baseUrl}/api/photos/source`, { method: 'POST', body: form }),
+      );
 
     expect(body.mapillary.attempted).toBe(true);
     expect(body.photos.length).toBeGreaterThan(0);

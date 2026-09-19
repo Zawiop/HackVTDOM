@@ -3,6 +3,7 @@ import cors from 'cors';
 import multer from 'multer';
 import { photosRouter } from './routes/photos.js';
 import { worldStateRouter } from './routes/worldState.js';
+import { placementRouter } from './routes/placement.js';
 import { UnsupportedPhotoTypeError } from './services/photoInput.js';
 import { BadRequestError } from './lib/http.js';
 import { PUBLIC_UPLOAD_PATH, UPLOAD_DIR } from './services/photoStore.js';
@@ -19,11 +20,12 @@ import { PUBLIC_UPLOAD_PATH, UPLOAD_DIR } from './services/photoStore.js';
  *   step  03     -> photosRouter          (this module)
  *   step  04     -> worldStateRouter      (this module)
  *   steps 05-07  -> image edit + mesh     (teammate)
- *   step  08     -> placementRouter       (this module, added when 02/07 land)
+ *   step  08     -> placementRouter       (this module)
  */
 const ROUTES: Array<[path: string, router: express.Router]> = [
   ['/api/photos', photosRouter],
   ['/api/world-states', worldStateRouter],
+  ['/api/placement', placementRouter],
 ];
 
 export function createApp(): express.Express {
