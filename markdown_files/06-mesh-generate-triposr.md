@@ -16,16 +16,93 @@ This is a public, shared, best-effort community Space, not a dedicated paid endp
 Gradio Space APIs are per-Space and can change with the app's own code updates — they are not a stable, versioned public API the way a vendor REST API is. Before Claude Code writes this function: open `https://huggingface.co/spaces/stabilityai/TripoSR`, use its "Use via API" panel (Gradio auto-generates one per Space) or `gradio_client.Client(space_id).view_api()`, and paste the actual current function signature and one real captured response below.
 
 ## CAPTURED EXAMPLE (fill this in before building)
-```
-Space API signature (from view_api() or the Space's own "Use via API" panel):
-<paste here>
 
-Example call:
-<paste here — likely something like client.predict(input_image_path, api_name="/generate")>
+Captured 2026-09-19 with `gradio_client==2.7.1` (Python), `HF_TOKEN` from `backend/.env` (free account).
+Script: `backend/scripts/capture_hf.py`.
+
+### stabilityai/TripoSR — DOWN (Space is in RUNTIME_ERROR, not just slow)
+```
+Space API signature:
+>>> Client("stabilityai/TripoSR", token=HF_TOKEN).view_api()
+ValueError: The current space is in the invalid state: RUNTIME_ERROR. Please contact the owner to fix this.
+
+HF API GET /api/spaces/stabilityai/TripoSR -> runtime:
+{'stage': 'RUNTIME_ERROR', 'hardware': {'current': None, 'requested': 'zero-a10g'},
+ 'errorMessage': '... scikit_build_core.errors.CMakeConfigError: scikit-build-core version 0.12.2 is too old.
+   Minimum required version is 1.0. ... error: metadata-generation-failed ... from
+   git+https://github.com/tatsy/torchmcubes.git ... File "/home/user/app/app.py", line 16 ...
+   subprocess.CalledProcessError: Command ['pip', 'install', '--no-build-isolation',
+   'git+https://github.com/tatsy/torchmcubes.git'] returned non-zero exit status 1.'}
+lastModified 2026-05-24
+```
+The Space's own container can't build (its `torchmcubes` dependency no longer compiles), so no call can
+succeed until Stability fixes it. No running public duplicate of TripoSR was found either. The backend still
+lists TripoSR first but checks the Space's runtime stage before calling it, so it costs ~0.3s to skip.
+
+### stabilityai/stable-fast-3d (SF3D) — WORKING replacement (live-captured)
+Same org (Stability AI), direct successor to TripoSR, outputs a textured **.glb** directly (no .obj->.glb
+conversion needed). ZeroGPU, runtime RUNNING, Gradio 4.41.0, license: Stability AI Community License.
+```
+Space API signature (from Client("stabilityai/stable-fast-3d").view_api()):
+ - predict(fr, api_name="/update_foreground_ratio") -> preview_background_removal
+ - predict(x, api_name="/lambda") -> 3d_model
+ - predict(image, fr, api_name="/requires_bg_remove") -> (preview_background_removal, 3d_model)
+     - [Image] image: filepath (required)
+     - [Slider] fr: float (default 0.85, 0.5..1.0)
+ - predict(input_image, foreground_ratio, remesh_option, vertex_count, texture_size, api_name="/run_button")
+       -> (preview_background_removal, 3d_model)
+     - [Image] input_image: filepath (required)
+     - [Slider] foreground_ratio: float (default 0.85)
+     - [Radio] remesh_option: Literal['None', 'Triangle', 'Quad'] (default 'None')
+     - [Slider] vertex_count: float (default -1, -1..20000)
+     - [Slider] texture_size: float (default 1024, 512..2048)
+     Returns: [Image] preview_background_removal: filepath, [Litmodel3d] 3d_model: filepath
+```
+**GOTCHA — the documented `/run_button` signature above does not work as shown.** The real function
+(`gradio_app.py`) is `run_button(run_btn, input_image, background_state, foreground_ratio, remesh_option,
+vertex_count, texture_size)`. `view_api()` hides the `run_btn` Button and the `background_state` State, and
+`gradio_client` only re-inserts placeholders for *State* inputs, so the 5-argument call arrives misaligned:
+```
+Example call (FAILS):
+client.predict(input_image=handle_file(img), foreground_ratio=0.85, remesh_option="None",
+               vertex_count=-1, texture_size=1024, api_name="/run_button")
+Example response:
+gradio_client.exceptions.AppError: The upstream Gradio app has raised an exception but has not enabled
+verbose error reporting.
+```
+It is also stateful: `run_model` reads the cut-out image from the session State that `/requires_bg_remove`
+fills — and that only happens when the input image already has transparency (alpha min == 0).
+Working sequence (same `Client` instance = same session; `_skip_components=False` so every input is passed
+explicitly):
+```
+Example call (WORKS):
+client = Client("stabilityai/stable-fast-3d", token=HF_TOKEN, download_files="<dir>", _skip_components=False)
+img = handle_file("rgba_cutout.png")                     # RGBA, background alpha = 0 (we cut it out locally)
+a = client.predict(img, 0.85, api_name="/requires_bg_remove")
+b = client.predict("Run", img, None, 0.85, "None", -1, 1024, api_name="/run_button")
+#                   ^run_btn    ^background_state (server substitutes session value)
 
 Example response:
-<paste here — expect a path/URL to a generated .glb or .obj file>
+a (0.7s) = ({'visible': True, 'value': 'Run', '__type__': 'update'}, None, None,
+            {'visible': True, 'value': '<dir>/d1e78.../image.webp', '__type__': 'update'},
+            {'visible': False, '__type__': 'update'}, {'visible': False, '__type__': 'update'})
+b (3.4s) = ({'__type__': 'update'}, None, None, {'__type__': 'update'},
+            {'visible': True, 'value': '<dir>/73effd85.../tmpg4dfka99.glb', '__type__': 'update'},
+            {'visible': True, '__type__': 'update'})
+# -> the mesh path is b[4]['value']. 1,004,836-byte .glb.
 ```
+Captured mesh facts (trimesh): one node `geometry_0`, identity transform, 14,034 verts / 18,704 faces,
+`TextureVisuals` + `PBRMaterial` (baseColor texture), bounds `[-0.448,-0.238,-0.269]..[0.486,0.179,0.254]`
+— i.e. **unitless, ~1-unit box, pivot near the bounding-box center**, not meters, not base-centered.
+
+Axis convention (read from SF3D's source, confirmed by rendering): SF3D's conditioning camera sits on +X of a
+Z-up internal frame; export applies `Rx(-90°)` then `Ry(+90°)`. So the exported GLB is **+Y up** and the
+**photographed facade faces −Z** (image-left → +X). glTF's convention is front = +Z, so step 07 applies a
+180° yaw.
+
+Input quality note: SF3D is an object model. A street photo must be cut out first. Tested local cutouts on
+the Kontext output: `rembg` `isnet-general-use` kept 0.3% of pixels (grabbed the flag), `u2net` 18% (lost a
+wing), `birefnet-general` 43% (whole building + tree; ~5-8s warm on CPU). The backend uses `birefnet-general`.
 
 ## Expected shape (subject to the captured example above overriding this)
 Input: a single image (the redesigned building image from step 05, as a local file path or PIL image, not a URL — Gradio clients typically want a local file, so download step 05's output first).
