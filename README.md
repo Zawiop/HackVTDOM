@@ -45,14 +45,36 @@ STATUS.md         # Decisions, spec deviations, and open questions
 
 ## Getting started
 
+**Python 3.12 or newer is required** — the code uses PEP 604 unions and the
+numpy/scipy pins need 3.11+. On macOS the system `python3` is 3.9 and will fail
+at install; use `python3.12` explicitly (`brew install python@3.12`).
+
 ```bash
-cd backend && python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt
+cd backend
+python3.12 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt
 cp .env.example .env
 .venv/bin/python -m uvicorn app.main:app --reload --port 8000
 ```
 
 ```bash
 cd frontend && npm install && cp .env.example .env && npm run dev
+```
+
+Then load the demo data, in this order — prebake owns the hero building and its
+real generated artifacts, seed owns the supporting cast. A fresh clone with no
+seed shows an empty map:
+
+```bash
+cd backend
+./.venv/bin/python seed/prebake_demo.py --reset
+./.venv/bin/python seed/seed_demo.py
+```
+
+Tests:
+
+```bash
+cd backend && ./.venv/bin/python -m pytest -q     # add -m live for the provider tests
+cd frontend && npm test && npx tsc -b
 ```
 
 Never commit a `.env`.
