@@ -49,3 +49,6 @@ tmp/
 
 
 !**/placeholder.glb
+
+# Local upload staging (moves to Supabase storage in step 11)
+backend/uploads/
