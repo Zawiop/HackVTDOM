@@ -35,11 +35,26 @@ def test_presets_are_full_descriptions_not_tags():
 
 
 def test_presets_share_the_reference_art_direction():
+    """Haze and an explicit palette are shared; the palette itself is not.
+
+    The reference art is not one look — the flooded plates are cold teal, the
+    ruined streets warm sepia — so asserting a single shared palette here would
+    lock in the flattening this set was rewritten to remove.
+    """
     for state in worldstate.WORLD_STATE_IDS:
         prompt = worldstate.prompt_for(state).lower()
-        assert "god ray" in prompt, state
+        assert "haze" in prompt or "fog" in prompt, state
         assert "palette" in prompt, state
         assert "photoreal" in prompt, state
+
+
+def test_each_state_has_its_own_palette():
+    palettes = set()
+    for state in worldstate.WORLD_STATE_IDS:
+        prompt = worldstate.prompt_for(state)
+        before = prompt[: prompt.index(" palette")]
+        palettes.add(before.rsplit(". ", 1)[-1].lower())
+    assert len(palettes) == len(worldstate.WORLD_STATE_IDS), palettes
 
 
 def test_preset_resolves_to_its_locked_string():

@@ -4,9 +4,15 @@ No external service. These five paragraphs live here and only here: 04-worldstat
 is explicit that the frontend must not send raw prompt text for the preset path, so that
 output stays consistent whichever building or user triggers it.
 
-They are written as complete scene descriptions rather than short tags, tuned to Scorched
-Nebraska's reference art — overgrowth, cracked concrete, god rays, a muted amber-green
-palette. Step 05 wraps whichever string comes out of here in its own building-preserving
+They are complete scene descriptions rather than short tags, written against Scorched
+Nebraska's published reference art (scorchednebraska.org). Each state carries its OWN
+palette — saturated green under canopy, desaturated teal under fog, warm ochre through
+dust, bone-white ash — because that art is not one look: the flooded plates are cold and
+teal, the ruined streets are warm and sepia. An earlier draft put "muted amber-green" on
+all five, which flattened exactly the variety the spectrum exists to show. What is shared
+is atmosphere: every plate is hazy, and depth reads as flattening haze rather than clear air.
+
+Step 05 wraps whichever string comes out of here in its own building-preserving
 instruction, so these describe condition and surroundings only, never the architecture.
 
 The UI presents them as a Present <-> Collapsed spectrum rather than a filter picker;
@@ -23,14 +29,14 @@ _PRESETS: Dict[str, dict] = {
         "blurb": "Intact, but wholly surrendered to plant life.",
         "spectrumPosition": 1,
         "prompt": (
-            "Decades after the last people left, the building stands intact but wholly "
-            "surrendered to plant life. Thick moss and dark ivy climb the facade and soften "
-            "every edge, saplings and tall grass push up through split paving, and root "
-            "systems have cracked the concrete into a web of fissures packed with earth. "
-            "Windows are empty or clouded, gutters have become planters, and a canopy of "
-            "young trees crowds the structure. Shafts of hazy god rays fall through the "
-            "leaves onto the walls. Muted amber-green palette, overcast diffuse light, "
-            "desaturated and quiet, photoreal."
+            "Four centuries of forest have closed over the building. Ivy and deep moss have "
+            "swallowed the facade until the concrete reads as a green mass with window openings, "
+            "saplings and ferns grow out of every ledge and split in the paving, and a dense young "
+            "canopy crowds right up against the walls and over the roof. Roots have cracked the "
+            "slabs into fissures packed with leaf litter, the glass is long gone, and standing damp "
+            "darkens the lower storeys. Saturated deep-green palette, soft diffuse daylight "
+            "filtering down through the canopy in visible shafts, humid haze between the trunks, "
+            "photoreal."
         ),
     },
     "flooded": {
@@ -38,13 +44,13 @@ _PRESETS: Dict[str, dict] = {
         "blurb": "Standing water claimed the ground floor and never receded.",
         "spectrumPosition": 2,
         "prompt": (
-            "Standing water has claimed the ground floor and never receded. A dark tide line "
-            "stains the facade a storey up; below it the masonry is slick with algae and "
-            "mineral scale, and the still brown-green surface mirrors the building back at "
-            "itself. Reeds and water plants have colonised the shallows, debris has collected "
-            "against the walls, and rust bleeds from every fixing. Damp has bloomed across the "
-            "upper walls. Muted amber-green palette, heavy humid air, god rays breaking "
-            "through low cloud onto the water, photoreal."
+            "Water has stood against the building for generations and never drained. It reaches "
+            "most of a storey up the facade, flat and still and reflecting the structure back as a "
+            "dark silhouette, with a hard tide line and sheets of algae and mineral scale below it. "
+            "Rust bleeds from every fixing, salvaged timber walkways and lean-tos have been lashed "
+            "to the lower windows above the waterline, and reeds break the surface further out. "
+            "Desaturated teal and grey-green palette, heavy low fog flattening everything behind it "
+            "into silhouette, cold diffuse light, photoreal."
         ),
     },
     "scorched": {
@@ -52,13 +58,13 @@ _PRESETS: Dict[str, dict] = {
         "blurb": "Fire passed through and burnt itself out.",
         "spectrumPosition": 3,
         "prompt": (
-            "Fire has passed through and burnt itself out. The facade is streaked with soot "
-            "above every opening, window glass is gone and the frames are warped, and sections "
-            "of roof and floor have collapsed inward leaving charred beams exposed against the "
-            "sky. Ash has settled in drifts along the sills and the ground, the surviving "
-            "concrete is spalled and crazed, and thin smoke still hangs in the air. Scorched "
-            "amber and grey-green palette, low harsh sun, god rays cutting through the haze "
-            "and the gaps in the structure, photoreal."
+            "Fire went through the building and burnt itself out a long time ago. Soot plumes "
+            "streak the facade above every opening, the windows are empty sockets with warped "
+            "frames, and whole sections of roof and floor have fallen in to leave charred beams "
+            "standing against the sky. Ash has drifted against the sills, the surviving concrete is "
+            "spalled and crazed, dead bare trees stand around it, and rusted-out vehicle hulks sit "
+            "where they stopped. Warm ochre and sepia palette, low harsh sun burning through thick "
+            "dust haze, photoreal."
         ),
     },
     "buried": {
@@ -66,13 +72,12 @@ _PRESETS: Dict[str, dict] = {
         "blurb": "The ground rose and took the lower storeys.",
         "spectrumPosition": 4,
         "prompt": (
-            "The earth has risen and taken the lower storeys. Drifts of soil and fine sand "
-            "bank steeply against the walls and pour in through the openings they have "
-            "reached, burying the entrance entirely and leaving only the upper floors above "
-            "the new ground line. Coarse grass and scrub have rooted across the slope as if it "
-            "had always been a hillside, and the exposed concrete is wind-scoured and cracked. "
-            "Muted amber-green palette, dusty air, god rays raking low across the dunes, "
-            "photoreal."
+            "The ground has risen and taken the building's lower storeys. Pale grey ash and fine "
+            "dust bank in smooth wind-carved drifts against the walls and spill in through whatever "
+            "openings they reached, so the entrance is gone entirely and only the upper floors "
+            "stand clear of the new surface. What is still exposed is bleached and scoured, edges "
+            "rounded off, with only sparse dead scrub rooted in the slope. Pale grey-white and bone "
+            "palette, flat cold overcast light, a fine dust haze hanging in the air, photoreal."
         ),
     },
     "petrified": {
@@ -80,13 +85,12 @@ _PRESETS: Dict[str, dict] = {
         "blurb": "Turned to mineral — one continuous rock formation.",
         "spectrumPosition": 5,
         "prompt": (
-            "The building has turned to mineral. Every surface is crusted in a thick pale "
-            "calcite shell that has flowed down the facade like candle wax and set, blunting "
-            "the detail and sealing the windows into blind hollows. Stalactite forms hang from "
-            "the ledges, the whole structure reads as one continuous grey-white rock formation "
-            "rather than as masonry, and nothing grows on it. A few streaks of amber-green "
-            "lichen cling to the sheltered faces. Muted amber-green palette, flat cold light, "
-            "god rays through mineral dust, photoreal."
+            "The building has gone to mineral. A thick pale crust has flowed down the facade like "
+            "wax and set hard, blunting every detail and sealing the windows into blind hollows, "
+            "and stalactite forms hang from the ledges and sills. It reads as one continuous rock "
+            "formation rather than as masonry, nothing grows on it, and the ground around it has "
+            "calcified into the same pale terraced shelves. Bone-white and cold grey palette, flat "
+            "even light with almost no shadow, mineral dust haze, photoreal."
         ),
     },
 }
