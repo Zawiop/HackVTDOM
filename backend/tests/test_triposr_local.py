@@ -43,4 +43,7 @@ def test_generate_mesh_route_with_local_triposr(tmp_path, monkeypatch):
     # Upright: a building photo is wider than it is tall, so height must not be the longest side.
     assert mesh.extents[1] < mesh.extents[0]
     assert isinstance(mesh.visual, trimesh.visual.TextureVisuals)
-    assert len(mesh.faces) <= triposr_local.MAX_FACES
+    assert len(mesh.faces) <= triposr_local.MAX_FACES + 200  # + the entrance portal boxes
+    main = body["entrances"][0]
+    assert main["source"] == "detected", body["warnings"]  # Burruss's arched entrance
+    assert main["facing"][2] > 0.8

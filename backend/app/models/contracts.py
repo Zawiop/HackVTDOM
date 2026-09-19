@@ -111,9 +111,31 @@ class MeshNormalization(BaseModel):
     extentsMeters: Dict[str, float]
     footprint: Dict[str, Any]
     removedFragments: int
+    # Raw provider file -> normalized meters, 4x4 row-major. Maps anything located in the raw
+    # frame (the mesh model's camera, for entrance detection) into the returned mesh's frame.
+    transform: Optional[List[List[float]]] = None
     faces: int
     confidence: ConfidenceState
     warnings: List[str]
+
+
+class Entrance(BaseModel):
+    """A door found in the image and marked on the mesh with a glowing portal.
+
+    All geometry is in the normalized mesh frame (meters, +Y up, facade toward +Z, y = 0 is the
+    ground), so it moves with the mesh under step 08's placement transform.
+    """
+
+    id: int
+    isMain: bool  # the highest-scoring door (or the default one)
+    position: List[float]  # [x, y, z] bottom-center of the doorway, on the portal's face
+    facing: List[float]  # unit [x, 0, z]: outward direction a player walks in against
+    widthMeters: float
+    heightMeters: float
+    score: Optional[float] = None  # detector confidence; null for a default entrance
+    imageBox: Optional[List[int]] = None  # [x0, y0, x1, y1] pixels in the image sent to generate-mesh
+    source: str  # 'detected' | 'default' (no door found: front-center of the facade)
+    confidence: ConfidenceState  # 'auto-high' detected | 'auto-low' default
 
 
 class GenerateMeshResult(BaseModel):
@@ -125,6 +147,8 @@ class GenerateMeshResult(BaseModel):
     provider: str  # 'sf3d' | 'triposr' | 'triposr-local' | 'placeholder'
     fallbackReason: Optional[str] = None
     normalization: MeshNormalization
+    # Doors, each already baked into meshUrl as a glowing portal. Always at least one.
+    entrances: List[Entrance] = []
     warnings: List[str]
     attempts: List[ProviderAttempt]
     cached: bool

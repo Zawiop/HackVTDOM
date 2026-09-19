@@ -1,7 +1,8 @@
-# Optional: the quota-free local TripoSR mesh provider (app/generation/triposr_local.py).
+# Optional local ML: the quota-free TripoSR mesh provider (app/generation/triposr_local.py) and
+# door detection for entrances (app/generation/entrances.py, OWLv2 ~600 MB on first use).
 # Also needs: git clone --depth 1 https://github.com/VAST-AI-Research/TripoSR .cache/vendor/TripoSR
-# Weights (~1.7 GB) download on first use into backend/.cache/hf. Without this, the mesh chain
-# just skips "triposr-local" and falls back to the placeholder after SF3D.
+# Weights download on first use into backend/.cache/hf. Without this, the mesh chain skips
+# "triposr-local", and entrances fall back to one default front-center door per building.
 -r requirements.txt
 torch==2.14.0
 omegaconf==2.3.1

@@ -138,10 +138,17 @@ def check_mesh_contract(body: dict, footprint=FOOTPRINT):
         assert body["rawMeshUrl"]
     norm = body["normalization"]
     assert norm["pivot"] == "base-center" and "+Y up" in norm["convention"]
+    assert body["entrances"] and body["entrances"][0]["isMain"]
+    for e in body["entrances"]:
+        assert e["source"] in ("detected", "default") and e["heightMeters"] > 0 and e["position"][1] >= 0
 
     r = fetch(body["meshUrl"])
     assert r.headers["content-type"] == "model/gltf-binary"
-    mesh = trimesh.load(io.BytesIO(r.content), file_type="glb", force="scene").to_geometry()
+    scene = trimesh.load(io.BytesIO(r.content), file_type="glb", force="scene")
+    assert any(name.startswith("entrance_") for name in scene.geometry), "entrance portal not baked in"
+    # Measure the building itself: the portals sit a little proud of the facade.
+    building = [g for name, g in scene.geometry.items() if not name.startswith("entrance_")]
+    mesh = trimesh.util.concatenate(building)
     lo, hi = mesh.bounds
     assert lo[1] == pytest.approx(0, abs=1e-3), "mesh base must be at y=0 (not floating/sunk)"
     assert (lo[0] + hi[0]) / 2 == pytest.approx(0, abs=1e-3) and (lo[2] + hi[2]) / 2 == pytest.approx(0, abs=1e-3)

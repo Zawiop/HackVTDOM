@@ -24,8 +24,10 @@ def _list(name: str, default: str) -> list[str]:
     return [p.strip() for p in os.environ.get(name, default).split(",") if p.strip()]
 
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-HF_TOKEN = os.environ.get("HF_TOKEN")
+# `or None`: a key left blank in .env means "not set". An empty HF token otherwise goes out as
+# an invalid "Authorization: Bearer " header and every Space call fails instead of going anonymous.
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") or None
+HF_TOKEN = os.environ.get("HF_TOKEN") or None
 
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "http://localhost:8000").rstrip("/")
 OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", BACKEND_DIR / "outputs"))

@@ -126,6 +126,22 @@ def _square_up_yaw(mesh: trimesh.Trimesh) -> float:
     return yaw
 
 
+def rewrite_glb_json(glb: bytes, mutate) -> bytes:
+    """Edit a .glb's JSON chunk in place (mutate(doc) -> bool changed); the BIN chunk is untouched.
+
+    For glTF features trimesh can't express on export (default materials, extensions).
+    """
+    json_len = struct.unpack("<I", glb[12:16])[0]
+    doc = json.loads(glb[20 : 20 + json_len])
+    if not mutate(doc):
+        return glb
+    chunk = json.dumps(doc, separators=(",", ":")).encode()
+    chunk += b" " * (-len(chunk) % 4)  # GLB chunks are 4-byte aligned; JSON pads with spaces
+    rest = glb[20 + json_len :]
+    total = 12 + 8 + len(chunk) + len(rest)
+    return glb[:8] + struct.pack("<I", total) + struct.pack("<I", len(chunk)) + b"JSON" + chunk + rest
+
+
 def _ensure_material(glb: bytes) -> bytes:
     """Give material-less primitives a neutral PBR material.
 
@@ -133,22 +149,20 @@ def _ensure_material(glb: bytes) -> bytes:
     ScenegraphLayer then draws nothing at all (verified in the deck_check harness). A white
     baseColor keeps COLOR_0 as the visible color, per the glTF spec (baseColor x COLOR_0).
     """
-    json_len = struct.unpack("<I", glb[12:16])[0]
-    doc = json.loads(glb[20 : 20 + json_len])
-    prims = [p for m in doc.get("meshes", []) for p in m["primitives"] if "material" not in p]
-    if not prims:
-        return glb
-    doc.setdefault("materials", []).append({
-        "name": "vertex_color_default",
-        "pbrMetallicRoughness": {"baseColorFactor": [1, 1, 1, 1], "metallicFactor": 0.0, "roughnessFactor": 0.9},
-    })
-    for p in prims:
-        p["material"] = len(doc["materials"]) - 1
-    chunk = json.dumps(doc, separators=(",", ":")).encode()
-    chunk += b" " * (-len(chunk) % 4)  # GLB chunks are 4-byte aligned; JSON pads with spaces
-    rest = glb[20 + json_len :]  # BIN chunk, untouched
-    total = 12 + 8 + len(chunk) + len(rest)
-    return glb[:8] + struct.pack("<I", total) + struct.pack("<I", len(chunk)) + b"JSON" + chunk + rest
+
+    def mutate(doc):
+        prims = [p for m in doc.get("meshes", []) for p in m["primitives"] if "material" not in p]
+        if not prims:
+            return False
+        doc.setdefault("materials", []).append({
+            "name": "vertex_color_default",
+            "pbrMetallicRoughness": {"baseColorFactor": [1, 1, 1, 1], "metallicFactor": 0.0, "roughnessFactor": 0.9},
+        })
+        for p in prims:
+            p["material"] = len(doc["materials"]) - 1
+        return True
+
+    return rewrite_glb_json(glb, mutate)
 
 
 def normalize_glb(
@@ -176,7 +190,8 @@ def normalize_glb(
 
     # 2b. Square the ground outline up with X/Z (photos are rarely taken head-on).
     align = _square_up_yaw(mesh)
-    mesh.apply_transform(trimesh.transformations.rotation_matrix(align, (0, 1, 0)))
+    r_align = trimesh.transformations.rotation_matrix(align, (0, 1, 0))
+    mesh.apply_transform(r_align)
 
     # 3. Units, checked against the known footprint (or a default size when it's not known yet).
     ext = mesh.extents  # x = facade width, y = height, z = depth
@@ -211,10 +226,15 @@ def normalize_glb(
                 units = {"source": "unknown", "method": f"{ratio:.1f}x off footprint, no unit factor fits; left unscaled"}
                 warnings.append("unit sanity check failed: mesh size inconsistent with footprint, needs manual correction")
     mesh.apply_scale(scale)
+    s_mat = np.diag([scale, scale, scale, 1.0])
 
     # 4. Pivot: base-center.
     lo, hi = mesh.bounds
-    mesh.apply_translation([-(lo[0] + hi[0]) / 2, -lo[1], -(lo[2] + hi[2]) / 2])
+    shift = [-(lo[0] + hi[0]) / 2, -lo[1], -(lo[2] + hi[2]) / 2]
+    mesh.apply_translation(shift)
+    # Raw file coordinates -> normalized meters, so anything located in the raw frame (e.g. the
+    # mesh model's camera, for entrance detection) can follow the mesh.
+    transform = trimesh.transformations.translation_matrix(shift) @ s_mat @ r_align @ r_front @ r_up
 
     ext = mesh.extents
     width, height, depth = float(ext[0]), float(ext[1]), float(ext[2])
@@ -246,6 +266,7 @@ def normalize_glb(
             "assumed": not footprint_known,
         },
         "removedFragments": dropped,
+        "transform": np.round(transform, 6).tolist(),
         "faces": int(len(mesh.faces)),
         "confidence": "auto-low" if low else "auto-high",
         "warnings": warnings,

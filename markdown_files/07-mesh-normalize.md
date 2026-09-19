@@ -52,3 +52,16 @@ bearing is `180 − yaw`, and mesh +X points east at yaw 0.
 
 Real sample outputs to test against: `backend/assets/samples/` (Burruss Hall, scorched + flooded,
 fitted to its real 101.88 x 70.79 m OSM footprint).
+
+
+## Entrances (added 2026-09-19, beyond the original spec)
+`/api/generate-mesh` also marks the building's doors, so the world has places to walk into.
+Doors are detected in the generated image with OWLv2 (open-vocabulary, local, no quota; "a window"
+is queried alongside the door phrases so windows are claimed as windows), filtered to boxes that
+sit on the building and reach near its base, then projected onto the mesh by replaying the mesh
+model's own input crop and camera and raycasting — the camera rides the same raw->normalized
+transform the mesh does (`normalization.transform`). Each door is baked in as a glowing portal
+(`KHR_materials_unlit`, which is what actually reads as "glowing" in deck.gl — a plain emissive
+PBR material renders washed-out) and returned as data: position, facing, size, score, image box.
+Every building gets at least one; with no detection, a default front-center entrance is flagged
+`auto-low`. Details and the JSON shape: `backend/assets/samples/README.md`.

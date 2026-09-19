@@ -106,9 +106,33 @@ export interface MeshNormalization {
   extentsMeters: { width: number; depth: number; height: number };
   footprint: { widthMeters: number | null; depthMeters: number | null; assumed: boolean };
   removedFragments: number;
+  /** Raw provider file -> normalized meters, 4x4 row-major. */
+  transform: number[][] | null;
   faces: number;
   confidence: ConfidenceState;
   warnings: string[];
+}
+
+/**
+ * A door found in the image and baked into the mesh as a glowing portal. Geometry is in the
+ * normalized mesh frame (meters, +Y up, facade toward +Z, y = 0 ground), so it moves with the
+ * mesh under the placement transform.
+ */
+export interface Entrance {
+  id: number;
+  isMain: boolean;
+  /** [x, y, z] bottom-center of the doorway, on the portal's face. */
+  position: [number, number, number];
+  /** Unit [x, 0, z]: the outward direction a player walks in against. */
+  facing: [number, number, number];
+  widthMeters: number;
+  heightMeters: number;
+  /** Detector confidence; null for a default entrance. */
+  score: number | null;
+  /** [x0, y0, x1, y1] pixels in the image sent to generate-mesh. */
+  imageBox: [number, number, number, number] | null;
+  source: "detected" | "default";
+  confidence: ConfidenceState;
 }
 
 /** Steps 06+07 — POST /api/generate-mesh. Never fails for provider reasons: falls back to the placeholder. */
@@ -121,6 +145,8 @@ export interface GenerateMeshResult {
   provider: "sf3d" | "triposr" | "triposr-local" | "placeholder";
   fallbackReason: string | null;
   normalization: MeshNormalization;
+  /** Doors, each already baked into meshUrl as a glowing portal. Always at least one. */
+  entrances: Entrance[];
   warnings: string[];
   attempts: ProviderAttempt[];
   cached: boolean;

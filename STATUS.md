@@ -394,6 +394,7 @@ Last updated 2026-09-19. Code: `backend/app/generation/` + `backend/app/routers/
 | `POST /api/mesh/normalize` (07 standalone) | Done: re-fits an existing .glb, e.g. once the real footprint is known |
 | `GET /api/generate/status` | Provider cooldowns + live HF Space states |
 | Local TripoSR mesh provider | Done (optional install): same TripoSR model run on this Mac, ~5 s on MPS, no quota |
+| Entrances (doors marked on the mesh) | Done: doors detected in the image, baked in as glowing portals + returned as data |
 | Placeholder fallback mesh | Committed: `backend/assets/placeholder.glb`, served at `/assets/placeholder.glb` |
 | Real sample outputs | Committed: `backend/assets/samples/` (Burruss Hall, scorched + flooded) |
 
@@ -436,6 +437,37 @@ Without it the chain skips straight to the placeholder.
 
 Both captured request/response pairs are in files 05 and 06 (CAPTURED EXAMPLE blocks).
 
+## Entrances — doors marked on every mesh (added after the original specs)
+
+`/api/generate-mesh` now finds the building's doors and marks them, so the world has places to
+walk into. Doors are detected in the generated image with **OWLv2** (open-vocabulary, runs
+locally, no quota, ~0.5 s warm), kept only when they sit on the building and reach near its base,
+then projected onto the mesh by replaying each mesh model's own input crop and camera and
+raycasting. Each one is baked into the `.glb` as a **glowing portal** and returned as data:
+
+```json
+"entrances": [{ "id": 0, "isMain": true, "position": [-12.261, 7.87, 16.793],
+                "facing": [-0.1185, 0, 0.993], "widthMeters": 6.83, "heightMeters": 8.29,
+                "score": 0.43, "imageBox": [406, 532, 481, 623],
+                "source": "detected", "confidence": "auto-high" }]
+```
+
+Same frame as the mesh, so entrances follow it through step 08 (rotate by the placement yaw,
+scale, offset to lat/lng). Every building gets at least one: with no detection, a
+`source: "default"` door goes at the facade front-center, flagged `auto-low`. Verified on real
+Burruss Hall output: the arched tower entrance is found in the photo, the scorched render and the
+flooded render (scores 0.39-0.44), and lands on the tower in a real deck.gl render.
+
+Two things worth knowing if you touch this:
+- **`KHR_materials_unlit` is what makes it glow.** A plain emissive PBR material renders
+  washed-out pale tan in deck.gl; unlit gives full-brightness amber. Both are set, so renderers
+  without the extension still get the emissive fallback.
+- **Portals are separate geometry** inside the `.glb` (`entrance_<id>_frame` / `_glow`), and
+  `normalization.extentsMeters` still measures the building alone, so step 08 is unaffected.
+
+Needs `requirements-local-mesh.txt` (torch + transformers, OWLv2 ~600 MB on first use). Without
+it every building just gets the default front-center entrance.
+
 ## Contract (build against this; Pydantic models in `models/contracts.py`, TS in `types/contract.ts`)
 
 **`POST /api/generate-image`**: `multipart/form-data`: `photo` (file), `worldStatePrompt` (text),
@@ -447,7 +479,7 @@ Errors: `400` bad input, `415` not an image, `502`/`504` generation failed/timed
 
 **`POST /api/generate-mesh`**: JSON, multipart or urlencoded: `imageUrl` (e.g. the generate-image
 output) or `image` (file), plus `footprintWidthMeters`, `footprintDepthMeters` from step 02 (optional,
-but pass them), optional `force`.
+but pass them), optional `force`. Also returns `entrances` (see above).
 → `200 { meshUrl, rawMeshUrl, cutoutUrl, confidence: "auto-high"|"auto-low", provider:
 "sf3d"|"triposr"|"triposr-local"|"placeholder", fallbackReason, normalization{...}, warnings[], attempts[], cached,
 elapsedMs }`. **Never fails for provider reasons.** On failure or timeout (75 s per attempt, retried
@@ -487,6 +519,9 @@ Files are served by the backend at `PUBLIC_BASE_URL/outputs/...` (default
 - **Caching**: results are content-addressed (`backend/outputs/`, git-ignored) and persisted in
   `outputs/cache.json`, so a repeat request for the same photo + prompt (or image + footprint) is
   instant and survives restarts. Only real generations are cached, never placeholder fallbacks.
+- **A blank key in `.env` now means "not set".** `HF_TOKEN=""` used to go out as an invalid
+  `Authorization: Bearer ` header and every HF Space call failed with `LocalProtocolError`
+  instead of falling back to anonymous access. Same for `GEMINI_API_KEY`.
 - **Dependency pins bumped** in `backend/requirements.txt`: `google-genai` needs `pydantic>=2.12.5`,
   so the foundation's `pydantic==2.10.4` could not stay. FastAPI/uvicorn/pytest now match the
   persistence branch's pins (0.141.1 / 0.53.0 / 9.1.1). Starlette 1.x dropped

@@ -38,3 +38,31 @@ Sample extents after normalization (from the response JSON):
 | flooded | 101.88 | 41.66 | 40.51 |
 
 Depth is the least reliable number: it's inferred from a single street-level photo.
+
+## Entrances
+
+Each `.glb` also carries its **entrances**: doors found in the image (OWLv2) and projected onto
+the mesh, baked in as a glowing portal (an unlit amber frame + panel, a little proud of the
+facade) and reported in the response as data:
+
+```json
+"entrances": [{
+  "id": 0, "isMain": true,
+  "position": [-12.261, 7.87, 16.793],   // bottom-center of the doorway, on the portal face
+  "facing": [-0.1185, 0.0, 0.993],       // unit [x, 0, z]: outward, the way a player walks in
+  "widthMeters": 6.83, "heightMeters": 8.29,
+  "score": 0.43, "imageBox": [406, 532, 481, 623],
+  "source": "detected", "confidence": "auto-high"
+}]
+```
+
+Same frame as the mesh (meters, +Y up, facade +Z, y = 0 ground), so entrances follow the mesh
+through step 08's placement: rotate `position`/`facing` by the placement yaw, scale `position`
+by the placement scale, then offset to the building's lat/lng. `position[1] > 0` means the door
+sits above the mesh's lowest point (Burruss's entrance is up a flight of steps) — it is not
+floating. Every building has at least one: if no door is detected, a `source: "default"`
+entrance goes at the facade's front-center flagged `auto-low`.
+
+The portal geometry is separate from the building geometry inside the `.glb` (node names
+`entrance_<id>_frame` / `_glow`), so it can be filtered out if you ever need the bare building —
+`normalization.extentsMeters` already measures the building alone.

@@ -22,6 +22,7 @@ from PIL import Image, ImageOps
 
 from . import config, storage
 from .image_edit import BadImage
+from .entrances import mark_entrances
 from .mesh_normalize import normalize_glb
 from .providers import (
     ProviderError,
@@ -33,7 +34,7 @@ from .providers import (
     start_cooldown,
 )
 
-CACHE_VERSION = "mesh-v4"  # bump whenever normalization output changes
+CACHE_VERSION = "mesh-v5"  # bump whenever normalization/entrance output changes
 MIN_FOREGROUND_FRACTION = 0.02
 
 _cutout_session = None
@@ -62,6 +63,13 @@ def cut_out_building(image: Image.Image) -> tuple[Image.Image, float]:
     rgba = remove(image.convert("RGB"), session=_get_cutout_session())
     alpha = np.asarray(rgba)[:, :, 3]
     return rgba, float((alpha > 128).mean())
+
+
+def _over_grey(rgba: Image.Image) -> Image.Image:
+    """A caller-supplied transparent cutout, flattened for the door detector."""
+    base = Image.new("RGBA", rgba.size, (128, 128, 128, 255))
+    base.alpha_composite(rgba.convert("RGBA"))
+    return base.convert("RGB")
 
 
 def _triposr(image_path: Path, deadline: float) -> bytes:
@@ -217,6 +225,19 @@ async def generate_mesh(
         )
 
     low = low or norm["confidence"] == "auto-low"
+
+    # Entrances: detect doors in the image, project them onto the mesh, bake glowing portals.
+    # Never allowed to cost the caller a mesh: any failure keeps the unmarked one.
+    entrances: list[dict] = []
+    try:
+        photo = image.convert("RGB") if not has_alpha else _over_grey(rgba)
+        glb, entrances, entrance_warnings = await asyncio.to_thread(
+            mark_entrances, glb, provider, norm["transform"], photo, np.asarray(rgba)[:, :, 3]
+        )
+        warnings += entrance_warnings
+    except Exception as e:
+        warnings.append(f"entrance marking failed, mesh returned unmarked: {type(e).__name__}: {str(e)[:200]}")
+
     _, mesh_url = storage.save_bytes(glb, "meshes", "glb")
     result = {
         "meshUrl": mesh_url,
@@ -226,6 +247,7 @@ async def generate_mesh(
         "provider": provider,
         "fallbackReason": fallback_reason,
         "normalization": norm,
+        "entrances": entrances,
         "warnings": warnings + norm["warnings"],
         "attempts": attempts,
     }

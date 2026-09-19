@@ -1,7 +1,7 @@
 {
- "meshUrl": "http://localhost:8000/outputs/meshes/2f764bf127c997e6966a785a.glb",
- "rawMeshUrl": "http://localhost:8000/outputs/meshes/raw/2fe3e04387b23d1ad5b4ee22.glb",
- "cutoutUrl": "http://localhost:8000/outputs/cutouts/6855592389aa049f48c55bbe.png",
+ "meshUrl": "http://localhost:8010/outputs/meshes/87d0a8f563150f651b37f8a1.glb",
+ "rawMeshUrl": "http://localhost:8010/outputs/meshes/raw/c86d14b21e423d81c14b0245.glb",
+ "cutoutUrl": "http://localhost:8010/outputs/cutouts/6855592389aa049f48c55bbe.png",
  "confidence": "auto-high",
  "provider": "sf3d",
  "fallbackReason": null,
@@ -34,10 +34,63 @@
    "assumed": false
   },
   "removedFragments": 0,
+  "transform": [
+   [
+    -95.111508,
+    0.0,
+    -48.390507,
+    -0.808499
+   ],
+   [
+    0.0,
+    106.713823,
+    0.0,
+    20.978006
+   ],
+   [
+    48.390507,
+    0.0,
+    -95.111508,
+    -1.662688
+   ],
+   [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ]
+  ],
   "faces": 18256,
   "confidence": "auto-high",
   "warnings": []
  },
+ "entrances": [
+  {
+   "id": 0,
+   "isMain": true,
+   "position": [
+    -5.962,
+    2.942,
+    20.718
+   ],
+   "facing": [
+    0.0332,
+    0.0,
+    0.9995
+   ],
+   "widthMeters": 4.27,
+   "heightMeters": 5.58,
+   "score": 0.39,
+   "imageBox": [
+    461,
+    434,
+    510,
+    498
+   ],
+   "source": "detected",
+   "confidence": "auto-high"
+  }
+ ],
  "warnings": [],
  "attempts": [
   {
@@ -53,12 +106,12 @@
    "provider": "sf3d",
    "ok": true,
    "error": null,
-   "ms": 6039,
+   "ms": 8073,
    "round": 0,
    "skipped": null,
    "timeout": null
   }
  ],
  "cached": false,
- "elapsedMs": 13849
+ "elapsedMs": 16561
 }

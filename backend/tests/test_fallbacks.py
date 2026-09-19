@@ -12,7 +12,7 @@ import pytest
 import trimesh
 from PIL import Image
 
-from app.generation import config, image_edit, mesh_generate, providers, storage
+from app.generation import config, entrances, image_edit, mesh_generate, providers, storage
 from app.generation.providers import ProviderError
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -27,6 +27,8 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(providers, "_cooldown_reason", {})
     monkeypatch.setattr(config, "MESH_ATTEMPT_TIMEOUT_S", 0.5)
     monkeypatch.setattr(config, "MESH_RETRIES", 1)
+    # Keep these fast: no door-detector model; every mesh gets the default entrance instead.
+    monkeypatch.setattr(entrances, "available", lambda: "detector disabled in tests")
 
 
 def transparent_png() -> bytes:
@@ -64,7 +66,10 @@ def test_all_providers_fail_falls_back_to_placeholder(monkeypatch):
     assert [a["round"] for a in res["attempts"]] == [0, 1]  # tried, then retried once
     mesh = served_mesh(res["meshUrl"])
     assert mesh.bounds[0][1] == pytest.approx(0, abs=1e-4)
-    assert max(mesh.extents[0], mesh.extents[2]) == pytest.approx(30.0, rel=1e-3)  # sized to footprint
+    assert max(mesh.extents[0], mesh.extents[2]) == pytest.approx(30.0, rel=5e-3)  # sized to footprint
+    # Even the placeholder gets an entrance, marked on the mesh.
+    assert len(res["entrances"]) == 1 and res["entrances"][0]["source"] == "default"
+    assert res["entrances"][0]["isMain"] is True
     # Failures are not cached: the next request tries the real providers again.
     assert not (config.OUTPUT_DIR / "cache.json").exists()
 
@@ -123,6 +128,7 @@ def test_retry_succeeds_on_second_round(monkeypatch):
     assert [(a["round"], a["ok"]) for a in res["attempts"]] == [(0, False), (1, True)]
     assert res["rawMeshUrl"] and served_mesh(res["rawMeshUrl"])
     assert res["normalization"]["front"]["yawDegrees"] == 180
+    assert res["entrances"] and "detector disabled in tests" in " ".join(res["warnings"])
 
     # Success is cached; an identical request comes straight back.
     again = run(mesh_generate.generate_mesh(transparent_png(), 95.0, 40.0))

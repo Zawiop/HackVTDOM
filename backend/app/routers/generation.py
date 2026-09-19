@@ -20,6 +20,7 @@ from starlette.datastructures import UploadFile
 
 from ..generation import config, storage
 from ..generation.image_edit import BadImage, ImageGenerationFailed, generate_redesigned_image
+from ..generation.entrances import warm as warm_entrance_detector
 from ..generation.mesh_generate import generate_mesh, warm_cutout_model
 from ..generation.mesh_normalize import normalize_glb
 from ..generation.providers import cooling_down, hf_space_stage
@@ -38,13 +39,14 @@ def setup(app: FastAPI) -> None:
     if os.environ.get("DEBUG_VIEWER") == "1":
         # tests/viewer/deck_check.html: the spec-07 orientation check, served same-origin.
         app.mount("/debug", StaticFiles(directory=config.BACKEND_DIR / "tests" / "viewer"), name="debug")
-    # ~1 GB segmentation model, ~20 s cold: load it in the background so boot stays instant.
+    # Segmentation (~1 GB) + door-detector models are slow cold: load them in the background.
     # Wraps the existing lifespan (Starlette 1.x dropped add_event_handler/on_startup).
     inner = app.router.lifespan_context
 
     @asynccontextmanager
     async def lifespan(app_):
         threading.Thread(target=warm_cutout_model, daemon=True).start()
+        threading.Thread(target=warm_entrance_detector, daemon=True).start()
         async with inner(app_) as state:
             yield state
 
