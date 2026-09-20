@@ -278,7 +278,7 @@
    "artifact": "/assets/samples/hancock_flooded.png",
    "placement": {
     "rotationDegrees": 137.11,
-    "scale": 0.7805,
+    "scale": 1.0,
     "scaleXYZ": null,
     "position": [
      37.2302579,
