@@ -1,4 +1,5 @@
 import type { Generation } from "../types/contract";
+import ConfidenceBadge from "./ConfidenceBadge";
 
 /**
  * Step 11's timeline: one address's rows in order, "Reality → Flooded → …".
@@ -40,9 +41,7 @@ export default function HistoryTimeline({
           <span>
             {i + 1}. {row.world_state ?? "unknown state"}
           </span>
-          <span className={`badge ${row.confidence_state}`}>
-            {row.confidence_state}
-          </span>
+          <ConfidenceBadge state={row.confidence_state} />
         </li>
       ))}
     </ol>

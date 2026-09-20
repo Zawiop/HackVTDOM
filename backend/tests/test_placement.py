@@ -91,8 +91,24 @@ def test_uniform_scale_fits_a_half_size_mesh():
     assert result["checks"]["scale"]["ok"]
 
 
-def test_mismatched_proportions_keep_uniform_scale_but_offer_a_stretch():
-    # Mesh is 1:1, footprint is 4:1 — uniform leaves it badly undersized.
+def test_a_shallow_mesh_gets_a_stretch_hint_but_is_not_flagged():
+    """Single-photo meshes systematically under-read depth; that is not a failure.
+
+    Mirrors the real captured output: SF3D returned 101.88 x 37.57 m for a
+    footprint measuring 101.88 x 70.79, a 47% shortfall on the free axis.
+    """
+    polygon = _rect_lnglat(LNG, LAT, 101.88, 70.79, 0.0)
+    result = _place(polygon, mesh_w=101.88, mesh_d=37.57)
+
+    assert result["checks"]["scale"]["ok"] is True
+    assert abs(result["scale"] - 1.0) < 0.01
+    # The non-uniform option is still offered, it just is not a flag.
+    assert result["scaleXYZ"] is not None
+    assert any("shallower" in w for w in result["warnings"])
+
+
+def test_wildly_mismatched_proportions_are_flagged_as_a_units_problem():
+    # Mesh is 1:1, footprint is 4:1 — a 75% shortfall, past what depth inference explains.
     polygon = _rect_lnglat(LNG, LAT, 80.0, 20.0, 0.0)
     result = _place(polygon, mesh_w=40.0, mesh_d=40.0)
 
@@ -101,7 +117,19 @@ def test_mismatched_proportions_keep_uniform_scale_but_offer_a_stretch():
     assert result["scaleXYZ"] is not None
     # `scale` stays proportion-preserving, which is the stated preference.
     assert abs(result["scale"] - 0.5) < 0.02
-    assert any("scaleXYZ" in w for w in result["warnings"])
+    assert "units" in result["checks"]["scale"]["detail"]
+
+
+def test_rotation_ceiling_accounts_for_a_mesh_smaller_than_the_footprint():
+    """A shallow mesh caps IoU by area, not by being wrongly oriented."""
+    polygon = _rect_lnglat(LNG, LAT, 101.88, 70.79, 0.0)
+    result = _place(polygon, mesh_w=101.88, mesh_d=37.57)
+
+    # The mesh covers ~53% of the footprint, so no rotation can beat that.
+    assert result["achievableIou"] < 0.6
+    assert result["rectangularity"] > 0.95  # the footprint itself is a clean rectangle
+    # Correctly oriented despite the low absolute IoU.
+    assert result["checks"]["rotation"]["ok"] is True
 
 
 # --- collision ---

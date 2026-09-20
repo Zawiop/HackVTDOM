@@ -53,7 +53,7 @@ Verified after the change: 77 backend tests, 19 frontend tests, clean
 | 01 geocode | `GET /api/geocode?q=` | Done, verified live |
 | 02 footprint | `POST /api/footprint` | Done, verified live |
 | 03 photo upload | multipart on `/api/generate-image` | Done (Mapillary auto-fetch not built) |
-| 04 World State presets | `GET /api/worldstates` | **Not built — 501** |
+| 04 World State presets | `GET /api/worldstates` | Done, locked server-side |
 | 05 image edit | `POST /api/generate-image` | Done (Gemini → Kontext fallback) |
 | 06 mesh | `POST /api/generate-mesh` | Done (→ placeholder fallback) |
 | 07 normalize | `POST /api/mesh/normalize` | Done |
@@ -63,13 +63,135 @@ Verified after the change: 77 backend tests, 19 frontend tests, clean
 | 11 persistence | `/api/generations`, `/api/history` | Done (Supabase or SQLite) |
 | 12 map render | frontend | Done |
 
-## The remaining gap
+## Step 04 — where the prompts live
 
-**Step 04 (World State presets) is not implemented.** The frontend sends raw
-`worldStatePrompt` text for every generation. `04-worldstate-prompts.md` says the
-five presets must live server-side so output stays consistent across buildings and
-users, and that the frontend must not send raw prompt text for the preset path.
-Right now nothing enforces that.
+The five locked descriptions are in `app/services/worldstate.py` and nowhere else.
+`GET /api/worldstates` returns the spectrum for the picker — id, label, blurb and
+`spectrumPosition` — and **deliberately no prompt text**: handing the locked strings
+to the browser invites a client to send one straight back as a freeform override,
+which is exactly the inconsistency keeping them server-side prevents.
+
+`POST /api/generate-image` now takes `worldState` (one of the five ids) for the
+preset path and resolves the description itself. `worldStatePrompt` is the freeform
+override only, and it *replaces* the preset rather than appending to it — that
+replacement is the part that literally satisfies "describe desired changes with an
+AI prompt", since a user pressing a preset button is not the one describing
+anything. The response reports `worldState` and `promptSource`
+(`preset:<id>` or `override`) so the persisted row records which was used.
+
+The picker is `frontend/src/worldstate/WorldStatePanel.tsx`, framed as a
+Present ↔ Collapsed spectrum rather than a filter grid, and it carries step 03's
+mandatory multi-file photo input alongside it.
+
+**Live generation is currently blocked by quota, not by code.** Both image
+providers are exhausted: the Gemini free tier reports `limit: 0` for
+`gemini-2.5-flash-image`, and the FLUX.1 Kontext Space has hit its ZeroGPU
+allowance. The route fails loud with 502, `retryable: true` and per-provider
+attempts, and the UI offers a retry. Budget this before judging — generate the
+demo images early and let them cache.
+
+## The demo is pre-baked and no longer needs any provider
+
+`seed/prebake_demo.py` runs the real pipeline end to end for the hero building —
+footprint (02), image (05), mesh (06+07), placement (08), persistence (11) — and
+writes the artifacts into `outputs/` so they are served from disk afterwards.
+
+```bash
+cd backend
+./.venv/bin/python seed/prebake_demo.py --reset   # hero building, real artifacts
+./.venv/bin/python seed/seed_demo.py              # neighbours + the flagged row
+```
+
+Order matters: prebake owns Burruss, seed owns the supporting cast. Seeding a
+placeholder Burruss at the same coordinate buries the real mesh under a 100 m
+grey box, which is what happened the first time.
+
+`--live` calls the providers and falls back to the captured artifact per step,
+reporting which is which. Without it the script uses the real outputs committed
+under `assets/samples/` — those came out of the live pipeline unmodified, so the
+rows are genuine end-to-end output, just not generated on this run.
+
+**Verified end to end:** Burruss Hall renders as the real textured SF3D mesh on
+its real OSM footprint at rotation 137.07 deg, scale 1.0001, with the before/after
+pair and a two-state history in the click panel. Step 08 coming out at scale ~1.0
+is an independent cross-check: step 07 sizes the mesh to the footprint's longest
+side, and `assets/samples/README.md` predicted "step 08's uniform scale should
+come out ~1" before step 08 existed.
+
+## About API keys
+
+**A new free Gemini key will not help.** Google returns `limit: 0` for
+`gemini-2.5-flash-image`, which is a quota allotment of zero on the free tier
+rather than a rate limit that resets — any other free key hits the same wall.
+Only a billing-enabled key changes it.
+
+**A new Hugging Face token will help.** The Kontext failure is a ZeroGPU *runs*
+limit, which is per-account and resets daily; a different account or HF PRO gets
+fresh quota. This is the cheaper fix, and mesh generation (SF3D) draws on the
+same pool.
+
+Swapping either is `.env` plus a restart — no code change. Note `PROVIDER_COOLDOWN_S`
+is 600 s and held in memory, so after a quota failure a provider is skipped for ten
+minutes; restart the server to clear it or you will see `skipped: true` and think
+the new key failed.
+
+## Every route is implemented
+
+`app/routers/stubs.py` is gone: steps 01-13 all have real routes and the file had
+been reduced to an empty router plus an unused helper. The API is 18 routes with
+no 501s.
+
+Step 03's Mapillary lookup (Aditya) closed the last one. Worth knowing from his
+live verification: `graph.mapillary.com` returns **non-deterministic counts for
+byte-identical queries** — five consecutive identical requests to a dense area
+returned 0, 2, 5, 6 and 5 images. A single empty `data` array is therefore often
+a false negative, which is why the lookup retries at the spec'd radius before
+making one wider pass. Manual upload remains the required path regardless.
+
+Two things his merge needed on arrival:
+
+- `vite.config.ts` gained a `test` block but still imported `defineConfig` from
+  `"vite"`, whose config type does not include it. That failed `tsc -b`, which
+  `npm run build` runs first — so the production build was broken. It imports
+  from `"vitest/config"` now.
+- `mapillary.py` carried its own `_haversine_m`, duplicating
+  `services/geo.py`. Two copies of a distance formula is how they drift.
+
+## Step 13 skin, and four fixes from the error audit
+
+**Skin (13-ui-skin.md).** Warm dark panels on amber and moss, Chakra Petch on
+headings only, body left as a plain system sans so the 3D scene and the
+before/after imagery stay the centrepiece. The basemap is toned with a CSS filter
+on `.maplibregl-canvas` rather than a new tile provider — 12-map-render.md ruled
+out a MapTiler key and this costs no new API surface. Confidence language is in
+one component, `panel/ConfidenceBadge.tsx`: `auto-high` stays quiet, `auto-low`
+reads "needs review" in the warn colour and rings the mesh, `manually-verified`
+reads "✓ verified" in moss. That third state is the human-in-the-loop beat, and
+it has to be visible to be demonstrable.
+
+**Propagate now measures building-to-building, not centre-to-centre.** This is
+why the 50 m and 100 m tiers were empty: Burruss to Pamplin is 105 m between
+centroids but well under 50 m between walls, and "buildings within 50 m" plainly
+means the buildings. Polygons come from the step 02 cache only — never a live
+Overpass call, because Propagate has to stay an instant reveal — and any pair
+whose footprints are not both cached falls back to centroid distance. All three
+tiers now populate: 50 m reveals Pamplin, 100 m adds Williams, 250 m adds
+McBryde, and Lane Stadium stays out at every radius.
+
+**The footprint cache is written through to disk** (`.cache/footprints.json`,
+gitignored, atomic replace, corrupt file ignored rather than fatal). An in-memory
+cache died with the server, which meant the pre-baked buildings vanished exactly
+when Overpass was least likely to answer — every public endpoint was down at some
+point during this build.
+
+**Step 12 reads `scaleXYZ`.** Step 08 emits a non-uniform fit when proportions
+disagree past 30% and the renderer was throwing it away. Uniform is still the
+default; the stretch is used only when offered. `achievableIou` was also being
+computed and then silently dropped by the response model — it is in the contract now.
+
+**`/api/generate/status` no longer overclaims.** It reported kontext `ready`
+while the provider was out of quota, because it only reflects this server's
+cooldown table. It now says so, in the payload.
 
 ## Step 08 — how the transform is computed
 
@@ -97,6 +219,16 @@ ceiling. A flat IoU threshold flagged Torgersen Hall — whose bridge over Alumn
 caps it at 0.42 — even though its best rotation was 96% of everything achievable.
 Below 35% rectangularity the shape is too irregular for a rectangle to orient at
 all, and it goes straight to a human.
+
+**Two thresholds were retuned against real captured output**, because the first
+versions flagged every genuine mesh. The rotation ceiling now accounts for the
+mesh's area as well as the footprint's shape: SF3D's Burruss mesh covers only 62%
+of the real polygon, so no rotation could ever reach the old ceiling and a
+correctly-oriented mesh was being flagged. And a depth shortfall under 65% is now
+a hint carrying `scaleXYZ` rather than a failure — single-photo reconstruction
+systematically under-reads depth, which step 07's own notes call the least
+reliable number, so flagging it made the flag meaningless. Past 65% it is still
+flagged, as a likely units problem.
 
 **Scale** is uniform, fitted with `min()` so the mesh stays inside the real
 footprint, which also keeps the collision test honest. When proportions disagree by
@@ -704,3 +836,106 @@ cd frontend && npm test
 Seeded demo: Burruss Hall (3 World States → timeline), 3 pre-baked neighbours at
 41m / 90m / 185m, one deliberately `auto-low` row (McBryde Hall) to demo the
 correction loop, and Lane Stadium at 420m to prove the radius filter excludes.
+
+---
+
+# STATUS — step 03 path B, and a duplicated-work postmortem
+
+## Steps 04 and 08 got built twice
+
+Two people implemented the World State presets and the placement transform in
+parallel, in different languages, without knowing about each other. **The
+version in `main` is the one that stayed**; the duplicate was dropped.
+
+That is the right outcome and not a close call: the surviving implementation was
+already integrated, the demo was pre-baked against it, and its thresholds had
+been retuned against real output. Swapping it out would have meant re-baking for
+no gain a judge could see.
+
+Worth saying plainly so nobody re-litigates it: the two implementations agreed on
+the substance. Both independently arrived at the achievable-IoU ceiling rather
+than an absolute threshold, both emit `scaleXYZ` with a uniform fallback, both
+treat the single-view depth shortfall as expected rather than as a fault, and
+both refuse to let a later clean sub-check overwrite an earlier flag.
+
+## What the duplicate was checked for before it was dropped
+
+Three things came out of comparing them, and they are worth keeping even though
+the code they came from is gone:
+
+**The two rotations differ by 180 degrees, and neither is wrong.** The surviving
+version returns 137.07 for Burruss Hall (step 02's longest-edge bearing); the
+other returned 306.9. Those describe the same footprint alignment with the facade
+pointing opposite ways, which is exactly the ambiguity footprint IoU cannot
+resolve — `placement.py`'s own `rotation_note` says the same thing. Facade
+direction is a step 09 decision. Nothing to fix.
+
+**The mesh frame is a rotation, not a mirror — if anyone ever swaps the rectangle
+proxy for the real base outline.** `compute_placement` currently approximates the
+mesh footprint as its width x depth rectangle, which is why the 0/180 and 90/270
+candidates score identically. If that is ever replaced with the mesh's actual
+base outline parsed from the `.glb`, note that glTF is right-handed: with Y up
+the geographic mapping is **east = +X, north = -Z**. Mapping north to +Z instead
+reflects the mesh.
+
+That bug cannot be caught by comparing IoU. Verified on real Burruss data: the
+mirrored mapping scored *higher* than the correct one (0.79 vs 0.74) on this
+near-rectangular building. What catches it is fit quality exceeding 1.0 —
+impossible, since the ceiling is the best a convex outline can score.
+
+**The minimum-area rectangle is a far more stable axis than the longest edge.**
+Also only relevant if the rectangle proxy is ever replaced, because a real base
+outline is convex while an OSM footprint often is not, and a hull edge bridging a
+concave notch is long while saying nothing about orientation. Measured across 32
+real VT footprints: a polygon and its own convex hull agree to **0.000 degrees**
+on min-area-rectangle angle and disagree by up to **65 degrees** on longest edge.
+
+## What did land: step 03 path B
+
+Mapillary auto-fetch was the one piece nobody else had built —
+`/api/photo/mapillary` was still a 501. It is now
+`app/services/mapillary.py` + `app/routers/photo.py`, with
+`frontend/src/photo/MapillarySuggestions.tsx` mounted inside `WorldStatePanel`
+beneath the required upload.
+
+It is a convenience layer and behaves like one: where there is no coverage it
+renders **nothing at all**, and a failed lookup is deliberately indistinguishable
+from an empty one. Manual upload is the required path either way.
+
+**The Mapillary bbox index is non-deterministic.** Five *byte-identical* requests
+to a known-dense area returned **0, 2, 5, 6, 5** images, so a single empty `data`
+array is frequently a false negative. Handled with a retry ladder — the spec'd
+40 m radius, again, then one 100 m pass — de-duplicated by id and ranked by true
+haversine distance. Widening is last and modest on purpose: imagery 100 m away
+may be of a different building, and this photo feeds image generation.
+
+Blacksburg coverage is real, which `03-photo-input.md` had listed as untested.
+Burruss Hall returns captures 23-51 m out, most recent 2026-03. The full captured
+request/response and the field notes are appended to that spec file:
+`geometry.coordinates` is `[lng, lat]`, `captured_at` is epoch **milliseconds**,
+and `thumb_*_url` is a signed expiring CDN link — the component downloads the
+bytes rather than passing the URL on, because a persisted reference to it rots.
+
+Three small changes outside this module made it reachable: `config.py` gained
+`mapillary_access_token` (it was already in `.env.example` but nothing read it,
+and `extra="ignore"` meant it vanished silently), `main.py` registers the router,
+and `vite.config.ts` gained a `test` block — testing-library and jsdom were
+already in `devDependencies` but nothing configured them, so component tests
+could not run.
+
+## For step 02's owner: Overpass 406s are sometimes just the User-Agent
+
+Plain `curl` to `overpass-api.de` got `406 Not Acceptable`; the identical request
+with `User-Agent: ScorchedNebraskaVTHacks/1.0 (...)` got `200`.
+`02-footprint-overpass.md` attributes 406s to load, and at least some of them are
+the missing header instead. The router already sends one — this only matters when
+someone is testing the API by hand and concludes the service is down.
+
+## For step 06/07's owner: the scorched demo mesh is twice too tall
+
+`burruss_scorched.glb` comes out ~64.5 m tall; Burruss Hall is roughly 30 m.
+Step 07 fits the longest horizontal side to the footprint and height follows
+proportionally, so a mesh that is too tall for its plan stays too tall — nothing
+downstream corrects it, and placement should not, because height is step 07's to
+own. `burruss_flooded.glb` is fine at 40.6 m. Either prefer the flooded mesh for
+the demo or regenerate the scorched one.

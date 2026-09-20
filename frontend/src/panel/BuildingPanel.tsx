@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import ConfidenceBadge from "./ConfidenceBadge";
 import { getHistory } from "../api/client";
 import HistoryTimeline from "./HistoryTimeline";
 import CorrectionControls from "../correction/CorrectionControls";
@@ -83,9 +84,7 @@ export default function BuildingPanel({
 
       <div className="spread push-bottom">
         <span className="mono-sm">{row.world_state ?? "no world state"}</span>
-        <span className={`badge ${row.confidence_state}`}>
-          {row.confidence_state}
-        </span>
+        <ConfidenceBadge state={row.confidence_state} />
       </div>
 
       <div className="thumbs">

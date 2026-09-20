@@ -54,3 +54,9 @@ tmp/
 
 
 !**/placeholder.glb
+
+# TS incremental build info
+*.tsbuildinfo
+
+# Local placement debug render (scripts/placement_preview.py)
+backend/placement-preview.html

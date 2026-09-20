@@ -5,8 +5,11 @@ import type {
   GenerateMeshResult,
   GeocodeResult,
   Generation,
+  MapillaryLookup,
   GenerationCreate,
   PropagateResponse,
+  WorldState,
+  WorldStateOption,
 } from "../types/contract";
 
 // Empty by default so requests go through Vite's /api proxy — no CORS in dev.
@@ -60,18 +63,28 @@ export function getFootprint(
   });
 }
 
+/** Step 04 — the Present <-> Collapsed spectrum for the picker. */
+export function getWorldStates(signal?: AbortSignal) {
+  return request<WorldStateOption[]>("/api/worldstates", { signal });
+}
+
 /**
  * Step 05. Slow (~30-60 s on the free HF queue): show progress, and on ApiError offer a retry
  * (the backend answers 502/504 with `retryable: true` rather than hanging).
  */
 export function generateImage(
   photo: Blob,
-  worldStatePrompt: string,
+  selection: { worldState?: WorldState; worldStatePrompt?: string },
   signal?: AbortSignal,
 ) {
   const form = new FormData();
   form.append("photo", photo);
-  form.append("worldStatePrompt", worldStatePrompt);
+  // Step 04: send the spectrum id, not prompt text — the locked description is
+  // resolved server-side. `worldStatePrompt` is the freeform override only.
+  if (selection.worldState) form.append("worldState", selection.worldState);
+  if (selection.worldStatePrompt?.trim()) {
+    form.append("worldStatePrompt", selection.worldStatePrompt.trim());
+  }
   // Empty headers so the browser sets the multipart boundary itself.
   return request<GenerateImageResult>("/api/generate-image", {
     method: "POST",
@@ -157,4 +170,18 @@ export function propagate(
     }),
     signal,
   });
+}
+
+/**
+ * Step 03 path B. Optional: manual upload is the required path and never
+ * depends on this.
+ *
+ * Always resolves — zero photos is the expected outcome for most addresses, so
+ * check `requiresManualUpload` and render nothing rather than an error.
+ */
+export function lookupMapillary(lat: number, lng: number, signal?: AbortSignal) {
+  return request<MapillaryLookup>(
+    `/api/photo/mapillary?lat=${lat}&lng=${lng}`,
+    { signal },
+  );
 }

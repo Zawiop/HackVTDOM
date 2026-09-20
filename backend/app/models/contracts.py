@@ -69,6 +69,22 @@ class FootprintResult(BaseModel):
     attribution: str = "© OpenStreetMap contributors"
 
 
+# --- Step 04: World State ---
+
+
+class WorldStateOption(BaseModel):
+    """One point on the Present <-> Collapsed spectrum.
+
+    Carries no prompt text: the locked descriptions stay server-side so output is
+    consistent whichever building or user triggers them.
+    """
+
+    id: WorldState
+    label: str
+    blurb: str
+    spectrumPosition: int
+
+
 # --- Steps 05-07: image edit, mesh generation, mesh normalization ---
 
 
@@ -91,6 +107,10 @@ class GenerateImageResult(BaseModel):
     model: str
     width: int
     height: int
+    # Step 04: which spectrum point this was, and whether the locked preset or a
+    # freeform override supplied the description. Persisted as `world_state`.
+    worldState: Optional[WorldState] = None
+    promptSource: str = ""  # 'preset:<id>' | 'override'
     attempts: List[ProviderAttempt]
     cached: bool
     elapsedMs: int
@@ -208,9 +228,12 @@ class PlacementResult(BaseModel):
     scoredRotationCandidates: List[ScoredRotationCandidate]
     # Per-check so step 09 knows which uncertainty it is showing.
     checks: Dict[str, PlacementCheck]
-    # Footprint area as a share of its oriented bounding box. Caps how high a
-    # rectangular mesh footprint can score, so the rotation test is judged against it.
+    # Footprint area as a share of its oriented bounding box.
     rectangularity: float
+    # The best IoU this mesh could reach against this footprint at any rotation —
+    # capped by the footprint's shape AND the mesh's area. The rotation check is
+    # scored against this, not against 1.0.
+    achievableIou: float
     warnings: List[str] = []
     rotation_note: str = ""
 
@@ -246,6 +269,9 @@ class Placement(BaseModel):
 
     rotationDegrees: float = 0.0
     scale: float = 1.0
+    # Non-uniform fit from step 08, set only when proportions disagree past 30%.
+    # Step 12 renders this in place of `scale` when present.
+    scaleXYZ: Optional[List[float]] = None
     # [lat, lng, z] — z is the ground-alignment offset from step 08.
     position: List[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
     confidence: ConfidenceState = "auto-low"

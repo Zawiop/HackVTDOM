@@ -8,6 +8,7 @@ import { UP_AXIS_ROLL } from "./map/layers";
 import BuildingPanel from "./panel/BuildingPanel";
 import PropagatePanel from "./propagate/PropagatePanel";
 import EntryPanel from "./entry/EntryPanel";
+import WorldStatePanel from "./worldstate/WorldStatePanel";
 import type { LocatedPlace } from "./entry/EntryPanel";
 import { offsetMeters } from "./lib/geo";
 import type {
@@ -33,6 +34,8 @@ export default function App() {
   const [clickedPoint, setClickedPoint] = useState<{ lat: number; lng: number } | null>(null);
   // Step 02's neighbours, kept so propagate never re-fetches them.
   const [neighbors, setNeighbors] = useState<FootprintCandidate[]>([]);
+  // The building steps 01/02 resolved, which step 04's picker generates against.
+  const [located, setLocated] = useState<LocatedPlace | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
 
   const selected = useMemo(
@@ -62,6 +65,7 @@ export default function App() {
   /** Step 01/02 finished: fly there and keep the neighbours for propagate. */
   const onLocated = useCallback((place: LocatedPlace) => {
     setNeighbors(place.footprint?.neighbors ?? []);
+    setLocated(place);
     mapRef.current?.easeTo({
       center: [place.lng, place.lat],
       zoom: 18,
@@ -123,6 +127,12 @@ export default function App() {
 
         <EntryPanel clickedPoint={clickedPoint} onLocated={onLocated} />
 
+        <WorldStatePanel
+          address={located?.selected?.tags.name ?? located?.address ?? null}
+          lat={located?.lat ?? null}
+          lng={located?.lng ?? null}
+        />
+
         <h3>view</h3>
         <div className="btn-grid">
           <button className={satellite ? "active" : ""} onClick={() => setSatellite((v) => !v)}>
@@ -152,8 +162,10 @@ export default function App() {
 
         <h3>legend</h3>
         <p className="hint">
-          <span className="warn-text">amber ring</span> = flagged by the placement
-          checker, shown rather than hidden. Click it to open the correction controls.
+          <span className="warn-text">ringed</span> = flagged by the placement checker,
+          shown rather than hidden. Click it to open the correction controls.
+          <br />
+          <span className="verified-text">✓ verified</span> = a human corrected it.
         </p>
       </aside>
 

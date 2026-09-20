@@ -62,6 +62,19 @@ export interface FootprintResult {
   attribution: string;
 }
 
+/** Step 04 — GET /api/worldstates. One point on the Present ↔ Collapsed spectrum.
+ *
+ * Carries no prompt text on purpose: the five locked descriptions stay server-side
+ * so output is consistent whichever building or user triggers them. Send the `id`
+ * to /api/generate-image, never a prompt string.
+ */
+export interface WorldStateOption {
+  id: WorldState;
+  label: string;
+  blurb: string;
+  spectrumPosition: number;
+}
+
 /** Steps 05-07 — one provider try, as reported by the generation routes. */
 export interface ProviderAttempt {
   provider: string;
@@ -85,6 +98,10 @@ export interface GenerateImageResult {
   model: string;
   width: number;
   height: number;
+  /** Step 04: which spectrum point this was. Persisted as `world_state`. */
+  worldState: WorldState | null;
+  /** `preset:<id>` when the locked description was used, `override` when the user typed one. */
+  promptSource: string;
   attempts: ProviderAttempt[];
   cached: boolean;
   elapsedMs: number;
@@ -186,8 +203,11 @@ export interface PlacementResult {
   scoredRotationCandidates: ScoredRotationCandidate[];
   /** Keyed by check name, so step 09 knows which uncertainty it is showing. */
   checks: Record<string, PlacementCheck>;
-  /** Footprint area as a share of its oriented bounding box; caps achievable IoU. */
+  /** Footprint area as a share of its oriented bounding box. */
   rectangularity: number;
+  /** Best IoU this mesh could reach at any rotation, capped by footprint shape
+   *  AND mesh area. The rotation check is scored against this, not against 1.0. */
+  achievableIou: number;
   warnings: string[];
   rotation_note: string;
 }
@@ -196,6 +216,8 @@ export interface PlacementResult {
 export interface PlacementRecord {
   rotationDegrees: number;
   scale: number;
+  /** Non-uniform fit, present only when proportions disagree past 30%. */
+  scaleXYZ?: [number, number, number] | null;
   /** [lat, lng, z] */
   position: [number, number, number];
   confidence: ConfidenceState;
@@ -264,3 +286,30 @@ export interface PropagateResponse {
 export type PlacementOverrides = Partial<
   Pick<PlacementRecord, "rotationDegrees" | "scale" | "position">
 >;
+
+/**
+ * Step 03 path B — a nearby street-level capture.
+ *
+ * Optional convenience on top of the mandatory upload. `capturedAt` is epoch
+ * **milliseconds**, and `url` is a signed, expiring CDN link: download the bytes
+ * before persisting anything that references it.
+ */
+export interface MapillaryPhoto {
+  source: "mapillary";
+  id: string;
+  url: string;
+  mimeType: string;
+  capturedAt: number | null;
+  location: { lat: number; lng: number } | null;
+  distanceMeters: number | null;
+}
+
+export interface MapillaryLookup {
+  attempted: boolean;
+  photos: MapillaryPhoto[];
+  /** How many passes the flaky bbox index needed. */
+  attempts: number;
+  bbox?: string;
+  /** Zero photos is the expected common case, never an error state. */
+  requiresManualUpload: boolean;
+}

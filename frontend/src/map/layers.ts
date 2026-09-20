@@ -31,6 +31,16 @@ export function orientationFor(
 
 export function scaleFor(row: Partial<Generation>): [number, number, number] {
   const s = Number(row?.placement?.scale ?? 1) || 1;
+
+  // Step 08 emits scaleXYZ only when mesh and footprint proportions disagree
+  // enough that the uniform fit looks undersized. Uniform stays the default —
+  // proportion-preserving is the stated preference in 08-placement-transform.md —
+  // but ignoring the stretch when it is offered throws the information away.
+  const xyz = row?.placement?.scaleXYZ;
+  if (Array.isArray(xyz) && xyz.length === 3) {
+    const [x, y, z] = xyz.map((v) => Number(v));
+    if ([x, y, z].every((v) => Number.isFinite(v) && v > 0)) return [x, y, z];
+  }
   return [s, s, s];
 }
 
@@ -112,7 +122,7 @@ export function buildScenegraphLayers(rows: Generation[], opts: LayerOpts = {}) 
 }
 
 /**
- * Low-confidence treatment: an amber ring, never hiding the building.
+ * Low-confidence treatment: a warning ring, never hiding the building.
  * Showing a flagged result honestly beats quietly dropping it, and clicking
  * the ring opens the step 09 correction controls.
  */
@@ -132,7 +142,7 @@ export function buildConfidenceRingLayer(rows: Generation[], opts: LayerOpts = {
     getRadius: 14,
     lineWidthUnits: "meters",
     getLineWidth: 1.1,
-    getLineColor: [230, 160, 40, 235],
+    getLineColor: [217, 96, 59, 235], // --sn-warn
     pickable: true,
     onClick: (info) => {
       if (info.object) onClick?.(info.object);

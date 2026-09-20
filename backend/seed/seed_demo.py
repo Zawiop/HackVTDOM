@@ -1,9 +1,14 @@
-"""Pre-bake demo rows so Propagate is an instant reveal during judging.
+"""Pre-bake the supporting cast so Propagate is an instant reveal during judging.
 
 Step 10 is explicit: do NOT generate neighbours live in front of judges. This
-script writes the source building, its pre-baked neighbours, a multi-state
-history for the timeline, and one deliberately low-confidence row so the
-correction UI (step 09) has something real to fix.
+script writes the pre-baked neighbours and one deliberately low-confidence row so
+the correction UI (step 09) has something real to fix.
+
+Burruss itself — the hero building, with its real generated image, real mesh and
+multi-state history — comes from `seed/prebake_demo.py`. Run that first:
+
+    ./.venv/bin/python seed/prebake_demo.py --reset
+    ./.venv/bin/python seed/seed_demo.py
 
 Coordinates are the real geocoded positions of these buildings, because step 08
 now matches each row against the actual OSM footprint at its coordinate — an
@@ -48,6 +53,10 @@ NEIGHBOURS = [
     ("Williams Hall, Blacksburg, VA", 37.22788, -80.42430, 22.0, 0.9),
     ("Newman Library, Blacksburg, VA", 37.22881, -80.41945, 78.0, 1.25),
 ]
+# Propagate spreads the *source row's* World State, so the supporting cast has to
+# share it with the hero row prebake_demo.py writes — otherwise Propagate correctly
+# reveals nothing and it looks broken.
+HERO_WORLD_STATE = "scorched"
 MCBRYDE = (37.23059, -80.42179)        # 241 m — inside the 250 m radius
 LANE_STADIUM = (37.21989, -80.41800)   # 1.1 km — outside every radius
 PHOTO = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2b/Burruss_Hall.jpg/640px-Burruss_Hall.jpg"
@@ -98,6 +107,7 @@ def real_placement(lat, lng, confidence=None):
     return Placement(
         rotationDegrees=computed["rotationDegrees"],
         scale=computed["scale"],
+        scaleXYZ=computed["scaleXYZ"],
         position=computed["position"],
         confidence=confidence or computed["confidence"],
         scoredRotationCandidates=[
@@ -130,26 +140,15 @@ def main() -> int:
     store = build_store(settings)
     print(f"seeding into: {store.backend_name}")
 
-    # --- source building, plus its history sequence (step 11 timeline) ---
-    # Transforms come from step 08 against the real OSM footprint, so the meshes
-    # land at building scale instead of the 1 m default.
-    burruss = real_placement(*BURRUSS)
-    src = store.save_generation(
-        row("Burruss Hall, Blacksburg, VA", *BURRUSS, "reclaimed", placement_override=burruss))
-    for state in ("flooded", "scorched"):
-        store.save_generation(
-            row("Burruss Hall, Blacksburg, VA", *BURRUSS, state, placement_override=burruss))
-    if burruss:
-        print(f"  source {src.id} + 2 more states (history = 3)"
-              f"  [step 08: {burruss.rotationDegrees}deg, scale {burruss.scale}]")
-    else:
-        print(f"  source {src.id} + 2 more states (history = 3)")
+    # Burruss itself is the hero building and belongs to prebake_demo.py, which
+    # gives it the real generated image and mesh. Seeding a placeholder copy at the
+    # same coordinate would bury those under a 100 m grey box.
 
     # --- pre-baked neighbours at real distances (step 10 reveal) ---
     for name, lat, lng, rot, scale in NEIGHBOURS:
         computed = real_placement(lat, lng)
         g = store.save_generation(
-            row(name, lat, lng, "reclaimed", rot=rot, scale=scale, placement_override=computed))
+            row(name, lat, lng, HERO_WORLD_STATE, rot=rot, scale=scale, placement_override=computed))
         d = haversine_meters(*BURRUSS, lat, lng)
         fit = f"  [{computed.rotationDegrees}deg, scale {computed.scale}]" if computed else ""
         print(f"  neighbour {name.split(',')[0]:<16} {d:6.1f}m  {g.confidence_state}{fit}")
@@ -158,7 +157,7 @@ def main() -> int:
     lat, lng = MCBRYDE
     # Forced auto-low whatever step 08 thinks — this row exists to demo step 09.
     low = store.save_generation(
-        row("McBryde Hall, Blacksburg, VA", lat, lng, "reclaimed",
+        row("McBryde Hall, Blacksburg, VA", lat, lng, HERO_WORLD_STATE,
             rot=15.0, scale=0.55, confidence="auto-low",
             placement_override=real_placement(lat, lng, confidence="auto-low"))
     )
@@ -167,14 +166,18 @@ def main() -> int:
 
     # --- outside every radius: proves the radius filter actually filters ---
     lat, lng = LANE_STADIUM
-    store.save_generation(row("Lane Stadium, Blacksburg, VA", lat, lng, "reclaimed",
+    store.save_generation(row("Lane Stadium, Blacksburg, VA", lat, lng, HERO_WORLD_STATE,
                               rot=0.0, placement_override=real_placement(lat, lng)))
     print(f"  far building    Lane Stadium     {haversine_meters(*BURRUSS, lat, lng):6.1f}m"
           f"  (outside 250m)")
 
-    total = len(store.list_generations())
-    print(f"\nseeded. total rows: {total}")
-    print(f"source id for Propagate: {src.id}")
+    rows = store.list_generations()
+    hero = next((r for r in rows if r.address.startswith("Burruss")), None)
+    print(f"\nseeded {len(rows)} rows total.")
+    if hero:
+        print(f"source id for Propagate: {hero.id}")
+    else:
+        print("No Burruss row yet — run seed/prebake_demo.py for the hero building.")
     return 0
 
 

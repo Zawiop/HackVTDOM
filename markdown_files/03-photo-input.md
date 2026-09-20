@@ -38,3 +38,71 @@ Do not build any downstream logic that assumes Mapillary will return something. 
 
 ## What NOT to build
 No fallback-of-last-resort logic that tries to synthesize or stock-photo a building image. If neither path produces a photo, the user must upload one. That's the spec's actual requirement; Mapillary is a nice-to-have on top of it.
+
+---
+
+## VERIFIED CAPTURE — 2026-09-19 (live call, `graph.mapillary.com`)
+
+Field names in the request contract above are **confirmed correct** as written.
+`thumb_1024_url` also exists and is a useful fallback when `thumb_2048_url` is absent.
+Token was sent as an `Authorization: OAuth <token>` header rather than a query param
+(both work; the header keeps the token out of proxy and access logs).
+
+### Request
+```
+GET https://graph.mapillary.com/images
+  ?fields=id,thumb_2048_url,geometry,captured_at
+  &bbox=-80.4238507,37.2280396,-80.4229493,37.2287604
+  &limit=2
+Authorization: OAuth <token>
+```
+(bbox = ~40m box around Burruss Hall, 37.2284 / -80.4234)
+
+### Response — HTTP 200
+```json
+{
+  "data": [
+    {
+      "id": "1137417950117930",
+      "thumb_2048_url": "https://scontent-iad6-1.xx.fbcdn.net/m1/v/t6/An-tFiYAw9w8Rjqw...?<signed params, ~600 chars, expiring>",
+      "geometry": { "type": "Point", "coordinates": [-80.423436899972, 37.2280748] },
+      "captured_at": 1631875240000
+    }
+  ]
+}
+```
+
+Notes confirmed against this capture:
+- `geometry.coordinates` is GeoJSON order — **[lng, lat]**, not [lat, lng]. Easy to get backwards.
+- `captured_at` is **epoch milliseconds** (1631875240000 → 2021-09-17), not seconds.
+- `thumb_*_url` is a signed, expiring Facebook CDN URL. Do not persist it as a long-lived
+  reference — download the bytes if the photo is going into a Supabase row (step 11).
+
+## VERIFIED BEHAVIOUR — the index is non-deterministic (important)
+
+Five consecutive **byte-identical** requests to a known-dense area (Times Square, r=40m)
+returned **0, 2, 5, 6, 5** images. A `limit` sweep on the same bbox returned
+0 / 1 / 1 / 4 / 0 results for limit = 1 / 2 / 5 / 10 / 50.
+
+So `"data": []` on a single request is frequently a **false negative**, not evidence that
+there is no coverage. The "empty = fall through to manual upload" rule in this file is still
+the correct behaviour, but it should only be concluded after a retry.
+
+Implemented policy (`backend/src/services/mapillary.ts`): try the spec'd ~40m radius, retry
+it once, then make one wider ~100m pass; stop at the first non-empty result; de-duplicate by
+id and rank by true haversine distance from the target so the nearest capture wins. Widening
+is last and modest on purpose — imagery 100m away may be of a *different* building, and this
+photo feeds image generation, so relevance beats hit rate.
+
+## VERIFIED COVERAGE — Blacksburg / VT (this file previously said "untested")
+
+Coverage exists and is usable:
+
+| Location | Photos | Nearest | Captured |
+|---|---|---|---|
+| Burruss Hall (37.2284, -80.4234) | 7 | 23.1 m | 2024-10-11 |
+| Squires Student Center (37.2293, -80.4180) | 1 | 37.4 m | 2018-08-07 |
+| Torgersen Hall (37.2295, -80.4189) | 2 | 122.6 m (needed the wide pass) | 2021-09-17 |
+
+Control: mid-Lake-Superior (47.7, -87.5) returns 0 after all three passes — genuine absence
+reads differently from the flaky-index false negative.
