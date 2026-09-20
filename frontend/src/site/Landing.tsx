@@ -315,6 +315,13 @@ export default function Landing() {
             Map data © OpenStreetMap contributors (ODbL) · Street-level imagery ©
             Mapillary contributors
           </p>
+          <p className="se-footer-team">
+            Built at VTHacks 14 by{" "}
+            <a href="mailto:ajeetbondugula@gmail.com">Ajeet Bondugula</a>,{" "}
+            <a href="mailto:adityajupally@gmail.com">Aditya Jupally</a>,{" "}
+            <a href="mailto:shaharrush@gmail.com">Arrush Shah</a> and{" "}
+            <a href="mailto:rishik.uppalapati@gmail.com">Rishik Uppalapati</a>
+          </p>
           <a
             className="se-footer-link"
             href="/map"

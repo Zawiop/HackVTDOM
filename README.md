@@ -90,12 +90,12 @@ Never commit a `.env`.
 Built by our VTHacks 14 team. The pipeline is specified as fourteen numbered
 modules in `markdown_files/`; each of us owned a contiguous slice of it.
 
-| Who | Modules | What that covers |
-| --- | --- | --- |
-| **Ajeet Bondugula** | 01, 02 | Project skeleton and the entry pipeline: address geocoding, and the OSM footprint match with its ambiguity handling, mirror fallback and cache |
-| **Aditya** (`autobot433`) | 03, 04, 08 | Photo input including the Mapillary street-level layer, the World State prompt set, and the placement transform |
-| **Arrush Shah** | 05, 06, 07 | AI image editing, image-to-3D mesh generation, and mesh normalization |
-| **Rishik Uppalapati** | 09, 10, 11, 12 | Correction UI, World Propagate, Supabase persistence, and the MapLibre + deck.gl 3D map |
+| Who | Contact | Modules | What that covers |
+| --- | --- | --- | --- |
+| **Ajeet Bondugula** | ajeetbondugula@gmail.com | 01, 02 | Project skeleton and the entry pipeline: address geocoding, and the OSM footprint match with its ambiguity handling, mirror fallback and cache |
+| **Aditya Jupally** (`autobot433`) | adityajupally@gmail.com | 03, 04, 08 | Photo input including the Mapillary street-level layer, the World State prompt set, and the placement transform |
+| **Arrush Shah** | shaharrush@gmail.com | 05, 06, 07 | AI image editing, image-to-3D mesh generation, and mesh normalization |
+| **Rishik Uppalapati** | rishik.uppalapati@gmail.com | 09, 10, 11, 12 | Correction UI, World Propagate, Supabase persistence, and the MapLibre + deck.gl 3D map |
 
 Modules 04, 08 and 13 were landed on `main` ahead of Aditya's push while his
 branch was still open; he merged around them, kept the versions already in place

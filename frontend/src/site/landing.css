@@ -639,6 +639,9 @@ body.se-no-scroll { overflow: hidden; }
   text-transform: uppercase;
 }
 .se-footer-credit { margin: 0; color: var(--se-ash); font-size: 0.76rem; max-width: 46ch; }
+.se-footer-team { margin: 0; color: var(--se-ash); font-size: 0.76rem; max-width: 46ch; }
+.se-footer-team a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.se-footer-team a:hover { color: var(--se-ember); }
 .se-footer-link {
   color: var(--se-ember);
   text-decoration: none;
