@@ -1,0 +1,18 @@
+{
+  "services": {
+    "scorched-nebraska-api": {
+      "root": "backend",
+      "entrypoint": "app.main:app",
+      "buildCommand": "pip install --upgrade pip && pip install -r requirements.txt"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": {
+        "type": "service",
+        "service": "scorched-nebraska-api"
+      }
+    }
+  ]
+}
