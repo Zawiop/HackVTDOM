@@ -147,6 +147,31 @@ RESPONSE (elapsed 32.9s):
 Note the input is resized by the Space (1280x830 in -> 1264x816 out, multiples of 16) and the output
 is **WebP**, not PNG/JPEG. The backend re-encodes to PNG before storing so every consumer gets one format.
 
+### Third path — the same model through HF Inference Providers (live-captured 2026-09-19)
+A different free bucket from the Space's ZeroGPU quota: the token's monthly Inference Providers
+credits. Needs "Make calls to Inference Providers" enabled on the HF token (without it every call
+is `403 ... does not have sufficient permissions to call Inference Providers`). `provider="auto"`
+routed to fal-ai (`router.huggingface.co/fal-ai/fal-ai/flux-kontext/dev`).
+```
+REQUEST:
+from huggingface_hub import InferenceClient
+client = InferenceClient(provider="auto", api_key=HF_TOKEN)
+image = client.image_to_image(
+    open("tests/fixtures/burruss_hall.jpg", "rb").read(),   # bytes | PIL.Image | path | URL
+    prompt="Edit this photo of a real building. Keep the exact same building: ... "
+           "Change only its condition and surroundings: overgrown with ivy and moss, cracked stone, ...",
+    model="black-forest-labs/FLUX.1-Kontext-dev",
+)
+
+RESPONSE (elapsed 11.9s):
+<PIL.JpegImagePlugin.JpegImageFile image mode=RGB size=1280x816>
+# A decoded PIL image, not a path or a URL: the SDK does the HTTP and the decoding. Input size
+# is preserved here (1280x830 -> 1280x816). The backend re-encodes to PNG like the other paths.
+```
+Defaults were used (no `guidance_scale` / `num_inference_steps`): the edit preserved the building
+exactly and was ~3x faster than the Space. Cost comes out of the account's free monthly credits, so
+this sits *after* the Space in the chain — the Space's daily quota is the larger free pool.
+
 ## Failure handling
 Wrap in a timeout (this is a synchronous call, not async-poll like Replicate/Meshy were, so a hang here blocks the request — set a hard client-side timeout, 30-60s, and fail loud with a retry option rather than freezing the UI).
 

@@ -389,7 +389,7 @@ Last updated 2026-09-19. Code: `backend/app/generation/` + `backend/app/routers/
 
 | Piece | State |
 | --- | --- |
-| `POST /api/generate-image` (05) | Done. Verified live: real photo → real redesigned PNG in ~33–40 s |
+| `POST /api/generate-image` (05) | Done. Three providers; verified live: real photo → real redesigned PNG in ~12–40 s |
 | `POST /api/generate-mesh` (06 + 07) | Done. Verified live: image → normalized textured .glb in ~10–20 s |
 | `POST /api/mesh/normalize` (07 standalone) | Done: re-fits an existing .glb, e.g. once the real footprint is known |
 | `GET /api/generate/status` | Provider cooldowns + live HF Space states |
@@ -424,8 +424,11 @@ local TripoSR through the real route). The foundation's 16 tests still pass on t
    `/api/generate-image` calls return `502 {retryable: true}` with that message in `attempts`, and
    cached photo+prompt pairs still return instantly. **So generate demo images early and reuse
    them.** A third free image path would need the HF token to have the "Make calls to Inference
-   Providers" permission (currently `403` for fine-grained token `ris-011`). Only the account owner
-   can change that, and I didn't wire a provider whose response I couldn't capture.
+   Providers" permission. **Resolved 2026-09-19:** the permission is now enabled on the team token,
+   its contract is captured in file 05, and it is wired in as the third image provider
+   (`hf-inference`). It draws on the token's *monthly credits*, a different pool from the Space's
+   *daily* ZeroGPU quota, so it still answers when the Space is exhausted — and it was ~3x faster
+   (11.9 s vs 34 s) in testing. It is last in the chain because the daily pool is the bigger one.
 
 **Mesh-side mitigation, done: local TripoSR.** The mesh chain is `triposr` (Space, skipped while
 down) → `sf3d` (Space) → **`triposr-local`** → placeholder. `triposr-local` runs the same open
@@ -471,7 +474,9 @@ it every building just gets the default front-center entrance.
 ## Contract (build against this; Pydantic models in `models/contracts.py`, TS in `types/contract.ts`)
 
 **`POST /api/generate-image`**: `multipart/form-data`: `photo` (file), `worldStatePrompt` (text),
-optional `force=true` (skip cache).
+optional `force=true` (skip cache). Providers in order: `gemini` (no free image quota today),
+`kontext` (HF Space, daily ZeroGPU quota), `hf-inference` (same model via HF Inference Providers,
+monthly credits). A provider that reports a quota error is skipped for 10 minutes.
 → `200 { imageUrl, sourcePhotoUrl, provider, model, width, height, attempts[], cached, elapsedMs }`.
 `imageUrl` is a PNG (the "after" panel); `sourcePhotoUrl` is the EXIF-corrected upload (the "before").
 Errors: `400` bad input, `415` not an image, `502`/`504` generation failed/timed out with

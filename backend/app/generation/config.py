@@ -35,10 +35,15 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 PLACEHOLDER_GLB = BACKEND_DIR / "assets" / "placeholder.glb"
 
 # Image edit (file 05). Providers are tried in order until one returns an image.
-IMAGE_PROVIDERS = _list("IMAGE_PROVIDERS", "gemini,kontext")
+IMAGE_PROVIDERS = _list("IMAGE_PROVIDERS", "gemini,kontext,hf-inference")
 GEMINI_IMAGE_MODEL = os.environ.get("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
 KONTEXT_SPACE = os.environ.get("KONTEXT_SPACE", "black-forest-labs/FLUX.1-Kontext-Dev")
 KONTEXT_GUIDANCE = _float("KONTEXT_GUIDANCE", 2.5)
+# Third path: the same Kontext model through HF Inference Providers (the token's monthly credits,
+# a separate pool from the Space's daily ZeroGPU quota). Needs the token's "Inference Providers"
+# permission. Last in the chain: the Space's free pool is bigger.
+HF_INFERENCE_MODEL = os.environ.get("HF_INFERENCE_MODEL", "black-forest-labs/FLUX.1-Kontext-dev")
+HF_INFERENCE_PROVIDER = os.environ.get("HF_INFERENCE_PROVIDER", "auto")
 IMAGE_TIMEOUT_S = _float("IMAGE_TIMEOUT_S", 60)
 # After a quota/429 failure, skip that provider for this long instead of paying for it every request.
 PROVIDER_COOLDOWN_S = _float("PROVIDER_COOLDOWN_S", 600)

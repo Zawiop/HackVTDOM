@@ -5,6 +5,9 @@ Photo + World State prompt -> redesigned image URL. Providers, in IMAGE_PROVIDER
             limit 0 for every image model (see file 05 CAPTURED EXAMPLE), so today it 429s
             instantly and is put on cooldown.
   kontext - FLUX.1 Kontext [dev] HF Space via gradio_client (the working free path).
+  hf-inference - the same Kontext model through HF Inference Providers, on the token's monthly
+            credits: a separate pool from the Space's daily ZeroGPU quota, so it still answers
+            when the Space is exhausted. Last, because that daily pool is the bigger one.
 The whole chain shares one IMAGE_TIMEOUT_S budget.
 """
 import io
@@ -122,7 +125,28 @@ def _kontext(jpeg: bytes, prompt: str, deadline: float) -> bytes:
         return Path(path).read_bytes()
 
 
-_PROVIDERS = {"gemini": _gemini, "kontext": _kontext}
+def _hf_inference(jpeg: bytes, prompt: str, deadline: float) -> bytes:
+    """Captured contract (file 05): InferenceClient.image_to_image returns a decoded PIL image."""
+    from huggingface_hub import InferenceClient
+
+    if not config.HF_TOKEN:
+        raise ProviderError("hf-inference", "HF_TOKEN not set")
+    client = InferenceClient(
+        provider=config.HF_INFERENCE_PROVIDER,
+        api_key=config.HF_TOKEN,
+        timeout=max(1.0, deadline - time.monotonic()),
+    )
+    try:
+        image = client.image_to_image(jpeg, prompt=prompt, model=config.HF_INFERENCE_MODEL)
+    except Exception as e:
+        msg = str(e)[:300]
+        raise ProviderError("hf-inference", f"{type(e).__name__}: {msg}", quota=looks_like_quota(msg)) from None
+    out = io.BytesIO()
+    image.convert("RGB").save(out, "PNG")
+    return out.getvalue()
+
+
+_PROVIDERS = {"gemini": _gemini, "kontext": _kontext, "hf-inference": _hf_inference}
 
 
 async def generate_redesigned_image(photo: bytes, world_state_prompt: str, *, force: bool = False) -> dict:
@@ -173,7 +197,9 @@ async def generate_redesigned_image(photo: bytes, world_state_prompt: str, *, fo
             "imageUrl": image_url,
             "sourcePhotoUrl": source_url,
             "provider": name,
-            "model": config.GEMINI_IMAGE_MODEL if name == "gemini" else config.KONTEXT_SPACE,
+            "model": {"gemini": config.GEMINI_IMAGE_MODEL, "kontext": config.KONTEXT_SPACE}.get(
+                name, config.HF_INFERENCE_MODEL
+            ),
             "width": img.width,
             "height": img.height,
             "attempts": attempts,

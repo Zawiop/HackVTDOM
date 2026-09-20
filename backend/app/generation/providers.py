@@ -40,7 +40,7 @@ def start_cooldown(provider: str, reason: str, seconds: float = config.PROVIDER_
 
 
 def looks_like_quota(message: str) -> bool:
-    return bool(re.search(r"quota|RESOURCE_EXHAUSTED|429|rate limit", message, re.I))
+    return bool(re.search(r"quota|RESOURCE_EXHAUSTED|429|rate limit|credits|402|payment", message, re.I))
 
 
 async def run_blocking(fn: Callable[[float], Any], timeout: float, provider: str) -> Any:

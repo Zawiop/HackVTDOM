@@ -210,6 +210,31 @@ def test_gemini_quota_zero_falls_through_to_kontext(monkeypatch):
     assert again["cached"] is True and again["imageUrl"] == res["imageUrl"]
 
 
+def test_chain_falls_through_to_hf_inference_when_both_are_out_of_quota(monkeypatch):
+    """Gemini has no image quota and the Space's daily ZeroGPU pool runs out; credits still answer."""
+    calls = []
+
+    def out_of_quota(name, message):
+        def fn(jpeg, prompt, deadline):
+            calls.append(name)
+            raise ProviderError(name, message, quota=True)
+
+        return fn
+
+    monkeypatch.setattr(image_edit, "_PROVIDERS", {
+        "gemini": out_of_quota("gemini", "429 RESOURCE_EXHAUSTED: free-tier limit: 0 for x"),
+        "kontext": out_of_quota("kontext", "AppError: You have exceeded your ZeroGPU runs limit."),
+        "hf-inference": lambda jpeg, prompt, deadline: (calls.append("hf-inference"), webp_bytes())[1],
+    })
+    monkeypatch.setattr(config, "IMAGE_PROVIDERS", ["gemini", "kontext", "hf-inference"])
+    res = run(image_edit.generate_redesigned_image((FIXTURES / "burruss_hall.jpg").read_bytes(), "Petrified in ash."))
+
+    assert calls == ["gemini", "kontext", "hf-inference"]
+    assert res["provider"] == "hf-inference" and res["model"] == config.HF_INFERENCE_MODEL
+    assert [a["ok"] for a in res["attempts"]] == [False, False, True]
+    assert providers.cooling_down("kontext")  # don't re-ask the Space until the quota resets
+
+
 def test_image_timeout_fails_loud(monkeypatch):
     def hangs(jpeg, prompt, deadline):
         while time.monotonic() < deadline:
