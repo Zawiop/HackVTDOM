@@ -45,6 +45,15 @@ class Settings(BaseSettings):
     overpass_match_radius_meters: int = 50
     overpass_neighbor_radius_meters: int = 250
 
+    # Guards the destructive endpoints (DELETE /generations/*, DELETE /world).
+    # Unset (the local-dev default) leaves them open, matching the workflow
+    # every earlier version of this app had. Once a host is public, anyone who
+    # opens /docs can see DELETE /world's shape and call it directly with curl —
+    # the UI's two-step confirmation is not a server-side control on its own.
+    # Set this in production and the same value in the frontend's build (see
+    # VITE_ADMIN_TOKEN in frontend/.env.example) to close that off.
+    admin_token: str = ""
+
     # --- Step 11: persistence ---
     supabase_url: str = ""
     supabase_secret_key: str = Field(

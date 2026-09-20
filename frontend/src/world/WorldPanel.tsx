@@ -1,5 +1,11 @@
 import { useRef, useState } from "react";
-import { importWorld, resetWorld, seedWorld, worldExportUrl } from "../api/client";
+import {
+  hasAdminAccess,
+  importWorld,
+  resetWorld,
+  seedWorld,
+  worldExportUrl,
+} from "../api/client";
 import type { ImportResult } from "../api/client";
 
 /**
@@ -122,36 +128,40 @@ export default function WorldPanel({
 
       {count > 0 && (
         <>
-          <label className="check-row">
-            <input
-              type="checkbox"
-              checked={replaceOnImport}
-              onChange={(e) => setReplaceOnImport(e.target.checked)}
-            />
-            <span>import replaces the world</span>
-          </label>
+          {hasAdminAccess && (
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={replaceOnImport}
+                onChange={(e) => setReplaceOnImport(e.target.checked)}
+              />
+              <span>import replaces the world</span>
+            </label>
+          )}
           <p className="hint">
             Export is a zip of the rows plus every mesh and image they use — it
-            opens on another machine. Import defaults to merging, and skips
-            anything already here.
+            opens on another machine. Import
+            {hasAdminAccess ? " defaults to merging, and skips" : " merges, and skips"}
+            {" "}anything already here.
           </p>
 
           <div className="btn-grid">
             <button onClick={onSeed} disabled={busy !== null} className="subtle">
               {busy === "seed" ? "loading…" : "+ demo buildings"}
             </button>
-            {confirmingReset ? (
-              <button onClick={() => setConfirmingReset(false)} disabled={busy !== null}>
-                cancel
-              </button>
-            ) : (
-              <button className="danger" onClick={() => setConfirmingReset(true)}>
-                reset world
-              </button>
-            )}
+            {hasAdminAccess &&
+              (confirmingReset ? (
+                <button onClick={() => setConfirmingReset(false)} disabled={busy !== null}>
+                  cancel
+                </button>
+              ) : (
+                <button className="danger" onClick={() => setConfirmingReset(true)}>
+                  reset world
+                </button>
+              ))}
           </div>
 
-          {confirmingReset && (
+          {hasAdminAccess && confirmingReset && (
             <>
               <p className="hint warn-text">
                 Remove all {count} generation{count === 1 ? "" : "s"} and their terrain?

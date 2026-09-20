@@ -15,10 +15,11 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from starlette.datastructures import UploadFile
 
 from ..config import get_settings
+from ..security import check_admin_token
 from ..services import worldio
 from ..services.worldio import BundleError
 from ..store import GenerationStore, PersistenceError, get_store, trash
@@ -107,14 +108,19 @@ async def import_world(
     mode: str = Query("merge", pattern="^(merge|replace)$"),
     store: GenerationStore = Depends(get_store),
     trash_path: Path = Depends(get_trash_path),
+    x_admin_token: str = Header(default=""),
 ) -> dict:
     """Read a bundle back in. Send the zip as multipart `bundle`, or JSON as the body.
 
     `mode=merge` (the default) adds what is missing and leaves the rest alone —
     a row whose id is already present is skipped, so importing the same bundle
-    twice is a no-op. `mode=replace` clears the world first, and stashes what it
-    cleared so `/api/world/undo` can walk it back.
+    twice is a no-op, and is as safe as any other write. `mode=replace` clears
+    the world first — exactly as destructive as `DELETE /world`, so it needs the
+    same admin token — and stashes what it cleared so `/api/world/undo` can walk
+    it back.
     """
+    if mode == "replace":
+        check_admin_token(x_admin_token)
     try:
         data = await _import_payload(request)
         body, archive = worldio.read_manifest(data)
@@ -165,14 +171,18 @@ def seed_world(
     mode: str = Query("merge", pattern="^(merge|replace)$"),
     store: GenerationStore = Depends(get_store),
     trash_path: Path = Depends(get_trash_path),
+    x_admin_token: str = Header(default=""),
 ) -> dict:
     """Fill an empty world with the committed demo buildings.
 
     Everything it loads references `backend/assets/samples/`, which is in the
     repo, so this works on a fresh clone that has generated nothing and has no
     network — which is the state a demo machine is in more often than anyone
-    plans for.
+    plans for. `mode=merge` only adds; `mode=replace` clears first and needs
+    the same admin token as `DELETE /world`.
     """
+    if mode == "replace":
+        check_admin_token(x_admin_token)
     try:
         rows = worldio.load_seed_world()
     except BundleError as e:

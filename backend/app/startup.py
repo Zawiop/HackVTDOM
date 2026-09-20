@@ -1,11 +1,9 @@
 """Ensure the demo data exists at boot.
 
-Render's free tier wipes local disk — the SQLite file, `outputs/`, and the
-footprint cache — on every cold start after an instance spins down from
+Render's free tier wipes local disk — the SQLite file and everything under
+`outputs/` — on every cold start after an instance spins down from
 inactivity. A judge loading the site right after that would otherwise see an
-empty map and, worse, a footprint lookup that depends on Overpass answering at
-exactly the wrong moment (every public Overpass mirror has gone down at some
-point during this project).
+empty map.
 
 Seeds from `assets/seed-world.json`, which is the one seed dataset — the same
 file `POST /api/world/seed` loads, through the same function. Booting used to
@@ -43,6 +41,13 @@ async def ensure_demo_seeded() -> None:
     from .services import cache, worldio
     from .store import build_store
 
+    # A fresh disk means a fresh (empty) footprint cache too. Preloading the
+    # committed snapshot means a visitor who types one of the demo addresses
+    # into the live entry pipeline gets an instant, Overpass-free answer —
+    # independent of whether the world itself needed seeding below.
+    if FOOTPRINT_CACHE_SEED.exists():
+        cache.seed_from(FOOTPRINT_CACHE_SEED)
+
     store = build_store(settings)
     try:
         existing = store.list_generations()
@@ -55,13 +60,6 @@ async def ensure_demo_seeded() -> None:
         return
 
     log.info("store is empty — auto-seeding from the committed demo world")
-
-    # A fresh disk means a fresh (empty) footprint cache too. Preloading the
-    # committed snapshot means the demo buildings resolve from disk even if
-    # Overpass happens to be down at the exact moment this instance wakes up.
-    if FOOTPRINT_CACHE_SEED.exists():
-        cache.seed_from(FOOTPRINT_CACHE_SEED)
-
     try:
         rows = worldio.load_seed_world()
         # Rewritten onto this instance's PUBLIC_BASE_URL. The file stores every

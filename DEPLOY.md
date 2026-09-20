@@ -90,13 +90,19 @@ seed data.
 
 Render's free tier spins a service down after 15 minutes idle and wipes its
 local disk on every cold start — the SQLite file, generated images/meshes,
-and the footprint cache all reset to nothing. `app/startup.py` runs the same
-`seed/prebake_demo.py` + `seed/seed_demo.py` any of us run locally, automatically,
-every time the store comes up empty — using generation artifacts and a
-footprint-cache snapshot that are committed to git, so it never depends on
-Overpass or an AI provider answering at the exact moment someone loads the
-site after it's been asleep. It's a no-op once the store has rows, so it never
+and the footprint cache all reset to nothing. `app/startup.py` restores the
+world committed at `backend/assets/seed-world.json` — the same file
+`POST /api/world/seed` reads — every time the store comes up empty. Every URL
+in it points at `backend/assets/samples/`, which is in the repo, so this is a
+handful of database inserts with no network call at all: no Overpass, no AI
+provider, nothing that can be down at the exact moment someone loads the site
+after it's been asleep. It's a no-op once the store has rows, so it never
 duplicates data or interferes with a real Supabase project.
+
+`seed/prebake_demo.py --live` is the separate, manual tool for regenerating
+that committed world against the real providers when someone wants fresher
+demo content — it is deliberately not part of the boot path, so a cold start
+can never call an AI provider or spend anyone's quota on its own.
 
 Anything a real visitor generates live is not covered by this — it lives on
 the same ephemeral disk and can be lost on the next cold start. That's a

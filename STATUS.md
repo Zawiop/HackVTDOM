@@ -157,6 +157,47 @@ Two things his merge needed on arrival:
 - `mapillary.py` carried its own `_haversine_m`, duplicating
   `services/geo.py`. Two copies of a distance formula is how they drift.
 
+## Real AI generation is live, and every demo building has its own photo
+
+A working `HF_TOKEN` closed the gap flagged in the last review: image generation
+was falling back to `local-restyle` (a Pillow colour grade) for every request,
+because the prior token's ZeroGPU quota was exhausted and Gemini's free tier
+is permanently `limit: 0`. With working quota, FLUX.1 Kontext produces genuinely
+striking output — verified against real requests, matching the reference art's
+palette and mood per World State (fire and smoke for scorched, cold teal water
+and salvaged timber walkways for flooded).
+
+Re-running the pre-bake with `--live` also fixed a real content gap: six of the
+eight demo buildings had been sharing Burruss Hall's own photo as their
+generation input (different meshes, wrong texture basis). `prebake_demo.py`
+now fetches each building's own real Mapillary photo before generating — all
+eight got one on this run — so `assets/samples/` holds eight distinct real
+buildings with their own real photos and their own real AI redesigns. See
+`assets/samples/README.md` for the recapture note and exactly which two rows
+are genuinely `auto-low` (not planted: Pamplin is near-square, Holden's mesh
+only reaches 63% of its achievable fit).
+
+## Destructive endpoints now require ADMIN_TOKEN once it's set
+
+The previous review found `DELETE /api/world?confirm=yes` had no
+authentication — the query string is documented in the API's own `/docs`, so
+anyone with the public URL could wipe the demo with one `curl` command. This
+was not theoretical: an automated test tool triggered it by accident during
+that review and the site went to zero.
+
+`app/security.py` adds a `require_admin` dependency, applied to
+`DELETE /generations/{id}`, `DELETE /generations` (by address), and
+`DELETE /world`. Unset `ADMIN_TOKEN` (the local-dev default) leaves them open,
+matching every earlier version of this app; set it and every request needs a
+matching `X-Admin-Token` header, checked with a constant-time comparison.
+`render.yaml` now prompts for it before deploy.
+
+The frontend mirrors this with `VITE_ADMIN_TOKEN`: unset (the default for the
+public Vercel build), the "reset world" and per-building "remove" controls
+don't render at all — a visible button that always answers 401 for every real
+visitor is worse than no button. This token is not itself a secret (it ships
+in the JS bundle like any `VITE_` var); the real control is server-side.
+
 ## Step 13 skin, and four fixes from the error audit
 
 **Skin (13-ui-skin.md).** Warm dark panels on amber and moss, Chakra Petch on

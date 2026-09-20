@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from ..models import Correction, Generation, GenerationCreate
+from ..security import require_admin
 from ..store import GenerationStore, NotFoundError, PersistenceError, get_store, trash
 from .world import get_trash_path
 
@@ -92,7 +93,7 @@ def correct_generation(
     return row
 
 
-@router.delete("/generations/{generation_id}", status_code=204)
+@router.delete("/generations/{generation_id}", status_code=204, dependencies=[Depends(require_admin)])
 def delete_generation(
     generation_id: str,
     store: GenerationStore = Depends(get_store),
@@ -125,7 +126,7 @@ def delete_generation(
     return Response(status_code=204)
 
 
-@router.delete("/generations", status_code=200)
+@router.delete("/generations", status_code=200, dependencies=[Depends(require_admin)])
 def delete_address(
     address: str = Query(..., min_length=1),
     store: GenerationStore = Depends(get_store),
@@ -150,7 +151,7 @@ def delete_address(
     return {"address": address, "removed": removed, "undoable": stashed is not None}
 
 
-@router.delete("/world", status_code=200)
+@router.delete("/world", status_code=200, dependencies=[Depends(require_admin)])
 def reset_world(
     confirm: str = Query(..., description="must be the literal string 'yes'"),
     store: GenerationStore = Depends(get_store),
