@@ -62,17 +62,29 @@ h1, h2, h3, .panel h2, .panel h3 {
 .panel {
   position: absolute;
   z-index: 10;
-  background: color-mix(in srgb, var(--sn-panel) 94%, transparent);
+  background: color-mix(in srgb, var(--sn-panel) 92%, transparent);
   border: 1px solid var(--sn-border);
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 12px;
   max-height: calc(100% - 32px);
   overflow-y: auto;
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(10px);
+  /* Lifts the panel off a bright satellite tile, which the flat border alone
+     did not do — at satellite zoom the chrome washed into the imagery. */
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  scrollbar-width: thin;
+  scrollbar-color: var(--sn-border) transparent;
 }
 
-.panel-left  { top: 16px; left: 16px;  width: 264px; }
-.panel-right { top: 16px; right: 56px; width: 336px; }
+.panel::-webkit-scrollbar { width: 8px; }
+.panel::-webkit-scrollbar-thumb {
+  background: var(--sn-border); border-radius: 4px;
+}
+.panel::-webkit-scrollbar-track { background: transparent; }
+
+/* Room for the floating view bar along the bottom. */
+.panel-left  { top: 16px; left: 16px;  width: 292px; max-height: calc(100% - 96px); }
+.panel-right { top: 16px; right: 56px; width: 336px; max-height: calc(100% - 96px); }
 
 .panel h2 { font-size: 13px; margin: 0 0 8px; letter-spacing: 0.04em; }
 .panel h3 {
@@ -102,6 +114,18 @@ button:hover:not(:disabled) { border-color: var(--sn-accent); }
 button:disabled { opacity: 0.45; cursor: not-allowed; }
 button.active { border-color: var(--sn-accent); color: var(--sn-accent); }
 button.primary { background: #1d3227; border-color: var(--sn-accent); color: var(--sn-accent); }
+button.subtle { background: transparent; color: var(--sn-muted); }
+button.subtle:hover:not(:disabled) { color: var(--sn-text); }
+button.tiny { padding: 2px 6px; font-size: 10px; }
+
+/* A download link that has to sit in a row of buttons and match them. */
+.btn-link {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--sn-mono); font-size: 12px; text-decoration: none;
+  background: #212a24; color: var(--sn-text);
+  border: 1px solid var(--sn-border); border-radius: 4px; padding: 5px 9px;
+}
+.btn-link:hover { border-color: var(--sn-accent); }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--sn-accent); outline-offset: 1px; }
 
 input[type="range"] { flex: 1; accent-color: var(--sn-accent); padding: 0; }
@@ -348,4 +372,291 @@ input[type="range"] { flex: 1; accent-color: var(--sn-accent); padding: 0; }
   color: var(--sn-text);
   border: 1px solid var(--sn-border);
   border-radius: 3px;
+}
+
+.panel button.full-width { width: 100%; }
+
+/* ==========================================================================
+   Panel structure
+   --------------------------------------------------------------------------
+   The left panel had grown to eight sections stacked in one scrolling column
+   with no hierarchy: "find a building", "generate", "propagate", "reset the
+   world" all looked equally important and the one you wanted was usually
+   below the fold. Three changes fix that — a brand header that carries the
+   world's numbers, collapsible sections, and display controls moved out to a
+   bar over the map where they are actually used.
+   ========================================================================== */
+
+.brand { margin: 0 0 4px; }
+.brand h1 {
+  font-family: var(--sn-display);
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  margin: 0 0 3px;
+  color: var(--sn-text);
+}
+
+.chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.chip {
+  font-family: var(--sn-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--sn-border);
+  color: var(--sn-muted);
+}
+.chip.warn {
+  color: var(--sn-warn);
+  border-color: color-mix(in srgb, var(--sn-warn) 50%, transparent);
+  background: color-mix(in srgb, var(--sn-warn) 12%, transparent);
+}
+.chip.ok {
+  color: var(--sn-verified);
+  border-color: color-mix(in srgb, var(--sn-verified) 50%, transparent);
+  background: color-mix(in srgb, var(--sn-verified) 12%, transparent);
+}
+
+.section { border-top: 1px solid var(--sn-border); }
+.section > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 0 7px;
+  user-select: none;
+}
+.section > summary::-webkit-details-marker { display: none; }
+.section-title {
+  font-family: var(--sn-display);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--sn-muted);
+}
+.section[open] > summary .section-title { color: var(--sn-accent); }
+.section > summary:hover .section-title { color: var(--sn-text); }
+.section-badge { color: var(--sn-muted); }
+/* A disclosure caret, drawn rather than relying on the default marker so it
+   can sit on the correct side and rotate. */
+.section > summary::after {
+  content: "";
+  width: 5px; height: 5px;
+  border-right: 1.5px solid var(--sn-muted);
+  border-bottom: 1.5px solid var(--sn-muted);
+  transform: rotate(-45deg);
+  margin-left: auto;
+  transition: transform 120ms ease;
+}
+.section[open] > summary::after { transform: rotate(45deg); }
+.section-badge + ::after { margin-left: 0; }
+.section-body { padding-bottom: 10px; }
+/* Inside a section the first heading is redundant chrome; the section titles
+   already carry the structure. */
+.section-body > h3:first-child { margin-top: 0; }
+
+.pipeline {
+  color: var(--sn-accent);
+  border-left: 2px solid var(--sn-accent);
+  padding-left: 7px;
+  margin: 8px 0 0;
+}
+.ok-text { color: var(--sn-verified); }
+
+/* ==========================================================================
+   Building roster
+   ========================================================================== */
+
+.roster-search {
+  width: 100%;
+  margin: 6px 0;
+  padding: 5px 7px;
+  border: 1px solid var(--sn-border);
+  border-radius: 4px;
+  background: var(--sn-bg);
+  color: var(--sn-text);
+  font: inherit;
+  font-size: 11px;
+}
+.roster-search:focus-visible { outline: none; border-color: var(--sn-accent); }
+
+.roster-list {
+  list-style: none;
+  margin: 4px 0 8px;
+  padding: 0;
+  /* Long worlds scroll inside the roster rather than pushing every other
+     section off the bottom of the panel. */
+  max-height: 232px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--sn-border) transparent;
+}
+
+.panel .roster-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-family: var(--sn-body);
+  font-size: 12px;
+}
+.panel .roster-item:hover { background: #1d241f; border-color: var(--sn-border); }
+.panel .roster-item.active {
+  border-color: var(--sn-accent);
+  background: color-mix(in srgb, var(--sn-accent) 12%, transparent);
+}
+
+.roster-dot {
+  flex: 0 0 auto;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--sn-muted);
+}
+.roster-dot.flagged { background: var(--sn-warn); }
+.roster-dot.verified { background: var(--sn-verified); }
+.roster-dot.ok { background: color-mix(in srgb, var(--sn-muted) 55%, transparent); }
+
+.roster-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.roster-state { flex: 0 0 auto; color: var(--sn-muted); }
+.roster-count { flex: 0 0 auto; color: var(--sn-accent); }
+
+/* ==========================================================================
+   View bar — display controls, over the map
+   ========================================================================== */
+
+.view-bar {
+  position: absolute;
+  z-index: 10;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--sn-panel) 92%, transparent);
+  border: 1px solid var(--sn-border);
+  border-radius: 999px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  max-width: calc(100% - 700px);
+}
+
+.reveal { display: flex; align-items: center; gap: 8px; }
+.reveal label {
+  font-family: var(--sn-display);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--sn-muted);
+}
+.reveal input[type="range"] { width: 130px; flex: 0 0 auto; }
+.reveal-readout {
+  min-width: 76px;
+  color: var(--sn-accent);
+  white-space: nowrap;
+}
+
+.view-bar-buttons { display: flex; gap: 6px; }
+/* The bar sits on the map; its buttons carry the panel's background so they
+   stay legible over bright satellite tiles. */
+.view-bar button { background: #212a24; }
+
+/* ==========================================================================
+   Undo
+   ========================================================================== */
+
+/* Centred in the gap between the panels, not in the viewport: centring on the
+   viewport put it straight over the left panel's header on a laptop screen,
+   which is exactly the size of screen a demo runs on. */
+.undo-banner {
+  position: absolute;
+  z-index: 40;
+  top: 18px;
+  left: 324px;
+  right: 72px;
+  margin: 0 auto;
+  width: fit-content;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  background: color-mix(in srgb, var(--sn-panel) 96%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sn-accent) 55%, var(--sn-border));
+  border-radius: 6px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  max-width: min(560px, 100%);
+}
+.undo-text {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.undo-text strong { color: var(--sn-accent); font-weight: 600; }
+
+/* ==========================================================================
+   World import / export
+   ========================================================================== */
+
+.world-panel > h3:first-child { margin-top: 0; }
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 2px;
+  font-size: 11px;
+  color: var(--sn-muted);
+  cursor: pointer;
+}
+.check-row input { accent-color: var(--sn-accent); margin: 0; }
+
+/* ==========================================================================
+   Narrow windows
+   --------------------------------------------------------------------------
+   A laptop plugged into an unfamiliar projector is the demo's normal state,
+   so the floating bars have to survive a short, narrow viewport instead of
+   overlapping the panels.
+   ========================================================================== */
+
+@media (max-width: 1280px) {
+  .view-bar { max-width: calc(100% - 660px); }
+  .reveal input[type="range"] { width: 92px; }
+}
+
+@media (max-width: 1040px) {
+  .panel-left { width: 260px; }
+  .panel-right { right: 16px; width: 300px; }
+  .view-bar {
+    left: 16px;
+    right: 16px;
+    bottom: 12px;
+    transform: none;
+    max-width: none;
+    flex-wrap: wrap;
+    justify-content: center;
+    border-radius: 8px;
+  }
+  /* Too narrow for the gap between the panels: drop it below the left panel
+     rather than squeezing it into a column of single words. */
+  .undo-banner {
+    left: 16px;
+    right: 16px;
+    max-width: none;
+    width: auto;
+  }
 }

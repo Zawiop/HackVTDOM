@@ -109,6 +109,8 @@ class PhotoScore(BaseModel):
     width: int = 0
     height: int = 0
     chosen: bool = False
+    # True when this photo was the caller's explicit choice, not the top score.
+    preferred: bool = False
     error: Optional[str] = None
 
 
@@ -123,6 +125,8 @@ class PhotoSelection(BaseModel):
     count: int
     chosenIndex: int
     chosenName: Optional[str] = None
+    # Whether the front was picked by the user or by scoring.
+    chosenByUser: bool = False
     scores: List[PhotoScore] = []
 
 

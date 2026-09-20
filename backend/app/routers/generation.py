@@ -170,10 +170,17 @@ async def generate_image(request: Request):
 
     try:
         datas = [await _read_upload(u) for u in uploads]
+        # `frontIndex` lets the caller say which photo is the front. Scoring
+        # answers "which is the best photograph", which is not the same
+        # question as "which side did you mean".
+        try:
+            prefer = int(form["frontIndex"]) if form.get("frontIndex") not in (None, "") else None
+        except (TypeError, ValueError):
+            prefer = None
         if len(datas) == 1:
             best, scores = 0, []
         else:
-            best, scores = photo_select.choose_best(datas)
+            best, scores = photo_select.choose_best(datas, prefer)
         result = await generate_redesigned_image(
             datas[best], prompt, force=_truthy(form.get("force")), world_state=world_state
         )
@@ -185,6 +192,7 @@ async def generate_image(request: Request):
                 "count": len(datas),
                 "chosenIndex": best,
                 "chosenName": getattr(uploads[best], "filename", None),
+                "chosenByUser": prefer is not None and 0 <= prefer < len(datas),
                 "scores": scores,
             },
         }

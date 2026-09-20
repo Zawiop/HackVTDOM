@@ -1,4 +1,13 @@
-"""Pre-bake the supporting cast so Propagate is an instant reveal during judging.
+"""Pre-bake extra supporting cast, by hand, on top of the committed seed world.
+
+NOT the boot path. `assets/seed-world.json` is the one seed dataset — it is
+what `POST /api/world/seed` loads and what `app/startup.py` auto-seeds on a
+cold start, and it already carries Burruss plus six real neighbours with their
+generated meshes. This script adds a few extra placeholder rows on top, for
+cases that dataset does not cover: a building outside every propagate radius,
+and a second low-confidence target. Addresses here must not overlap with it.
+
+Pre-bake the supporting cast so Propagate is an instant reveal during judging.
 
 Step 10 is explicit: do NOT generate neighbours live in front of judges. This
 script writes the pre-baked neighbours and one deliberately low-confidence row so
@@ -47,9 +56,15 @@ MESH = "/placeholder.glb"  # served from frontend/public until real meshes exist
 # (Y is up). Step 08 scales this to whatever the real footprint turns out to be.
 MESH_WIDTH_M = 10.0
 MESH_DEPTH_M = 6.6
-# Distances from Burruss: Pamplin 105 m, Williams 141 m, McBryde 241 m.
+# Distances from Burruss: Williams 141 m, McBryde 241 m.
+#
+# Every address here must be one that `assets/seed-world.json` does NOT carry.
+# Pamplin Hall used to be first in this list, and the seed world has a Pamplin
+# with its real generated mesh — so a machine that ran both ended up with two
+# Pamplin rows, and because the map draws the newest row per address and this
+# script ran second, the real mesh was hidden behind this grey placeholder.
+# tests/test_world_io.py asserts the two sets stay disjoint.
 NEIGHBOURS = [
-    ("Pamplin Hall, Blacksburg, VA", 37.22864, -80.42478, 112.0, 1.1),
     ("Williams Hall, Blacksburg, VA", 37.22788, -80.42430, 22.0, 0.9),
     ("Newman Library, Blacksburg, VA", 37.22881, -80.41945, 78.0, 1.25),
 ]
@@ -58,8 +73,20 @@ NEIGHBOURS = [
 # reveals nothing and it looks broken.
 HERO_WORLD_STATE = "scorched"
 MCBRYDE = (37.23059, -80.42179)        # 241 m — inside the 250 m radius
+MCBRYDE_ADDRESS = "McBryde Hall, Blacksburg, VA"
 LANE_STADIUM = (37.21989, -80.41800)   # 1.1 km — outside every radius
+LANE_STADIUM_ADDRESS = "Lane Stadium, Blacksburg, VA"
 PHOTO = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2b/Burruss_Hall.jpg/640px-Burruss_Hall.jpg"
+
+
+def addresses() -> set[str]:
+    """Every address this script writes.
+
+    Stated here so tests/test_world_io.py can assert it stays disjoint from
+    `assets/seed-world.json` — the overlap this had with it once meant a real
+    generated mesh was hidden behind a grey placeholder on the deployed map.
+    """
+    return {name for name, *_ in NEIGHBOURS} | {MCBRYDE_ADDRESS, LANE_STADIUM_ADDRESS}
 
 
 def placement(lat, lng, rot=47.5, scale=1.0, confidence="auto-high"):
@@ -77,14 +104,18 @@ def placement(lat, lng, rot=47.5, scale=1.0, confidence="auto-high"):
     )
 
 
-def real_placement(lat, lng, confidence=None):
+async def real_placement(lat, lng, confidence=None):
     """Run step 08 against the building actually at this coordinate.
 
     Returns None when Overpass is unreachable, so seeding still works offline —
     the caller falls back to its hardcoded transform.
+
+    Async, and does not call asyncio.run() itself: this is also invoked from
+    app.startup's auto-seed, which already runs inside FastAPI's event loop —
+    asyncio.run() cannot be nested inside one that is already running.
     """
     try:
-        fp = asyncio.run(footprint_service.lookup(lat, lng))
+        fp = await footprint_service.lookup(lat, lng)
     except footprint_service.FootprintUnavailable as exc:
         print(f"    (overpass unavailable: {exc!s:.60} — using fallback transform)")
         return None
@@ -128,12 +159,15 @@ def row(address, lat, lng, world_state, *, rot=47.5, scale=1.0,
     )
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--reset", action="store_true", help="delete the local sqlite db first")
-    args = ap.parse_args()
+async def run(reset: bool = False) -> int:
+    """The actual seeding logic, callable directly — no argv, no asyncio.run().
 
-    if args.reset and settings.store_backend == "sqlite" and settings.sqlite_path.exists():
+    Split out so app.startup can await this at server boot without going
+    through argparse (which would try to parse uvicorn's own command-line
+    arguments and crash) or asyncio.run() (which cannot nest inside the event
+    loop FastAPI is already running).
+    """
+    if reset and settings.store_backend == "sqlite" and settings.sqlite_path.exists():
         settings.sqlite_path.unlink()
         print(f"removed {settings.sqlite_path}")
 
@@ -146,7 +180,7 @@ def main() -> int:
 
     # --- pre-baked neighbours at real distances (step 10 reveal) ---
     for name, lat, lng, rot, scale in NEIGHBOURS:
-        computed = real_placement(lat, lng)
+        computed = await real_placement(lat, lng)
         g = store.save_generation(
             row(name, lat, lng, HERO_WORLD_STATE, rot=rot, scale=scale, placement_override=computed))
         d = haversine_meters(*BURRUSS, lat, lng)
@@ -157,17 +191,17 @@ def main() -> int:
     lat, lng = MCBRYDE
     # Forced auto-low whatever step 08 thinks — this row exists to demo step 09.
     low = store.save_generation(
-        row("McBryde Hall, Blacksburg, VA", lat, lng, HERO_WORLD_STATE,
+        row(MCBRYDE_ADDRESS, lat, lng, HERO_WORLD_STATE,
             rot=15.0, scale=0.55, confidence="auto-low",
-            placement_override=real_placement(lat, lng, confidence="auto-low"))
+            placement_override=await real_placement(lat, lng, confidence="auto-low"))
     )
     print(f"  low-confidence  McBryde Hall     {haversine_meters(*BURRUSS, lat, lng):6.1f}m  "
           f"{low.confidence_state}  <- correction UI target")
 
     # --- outside every radius: proves the radius filter actually filters ---
     lat, lng = LANE_STADIUM
-    store.save_generation(row("Lane Stadium, Blacksburg, VA", lat, lng, HERO_WORLD_STATE,
-                              rot=0.0, placement_override=real_placement(lat, lng)))
+    store.save_generation(row(LANE_STADIUM_ADDRESS, lat, lng, HERO_WORLD_STATE,
+                              rot=0.0, placement_override=await real_placement(lat, lng)))
     print(f"  far building    Lane Stadium     {haversine_meters(*BURRUSS, lat, lng):6.1f}m"
           f"  (outside 250m)")
 
@@ -179,6 +213,13 @@ def main() -> int:
     else:
         print("No Burruss row yet — run seed/prebake_demo.py for the hero building.")
     return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--reset", action="store_true", help="delete the local sqlite db first")
+    args = ap.parse_args()
+    return asyncio.run(run(reset=args.reset))
 
 
 if __name__ == "__main__":

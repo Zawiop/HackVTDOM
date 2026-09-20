@@ -3,6 +3,7 @@ import {
   ApiError,
   deleteAddress,
   deleteGeneration,
+  resetWorld,
   correctGeneration,
   getHistory,
   listGenerations,
@@ -104,5 +105,28 @@ describe("removing buildings", () => {
   it("surfaces a failed removal instead of pretending it worked", async () => {
     stubFetch(404, { detail: "no generation with id 'gone'" });
     await expect(deleteGeneration("gone")).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+
+describe("clearing the world", () => {
+  it("reports how many generations went", async () => {
+    stubFetch(200, { removed: 12 });
+    await expect(resetWorld()).resolves.toEqual({ removed: 12 });
+  });
+
+  it("sends the confirmation the backend demands", async () => {
+    // A bare DELETE on this path is refused server-side; nothing undoes it.
+    stubFetch(200, { removed: 0 });
+    await resetWorld();
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/world?confirm=yes"),
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("surfaces a refusal rather than looking like it worked", async () => {
+    stubFetch(400, { detail: "pass confirm=yes to reset the world" });
+    await expect(resetWorld()).rejects.toMatchObject({ status: 400 });
   });
 });

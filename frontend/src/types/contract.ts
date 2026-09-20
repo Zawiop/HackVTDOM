@@ -99,6 +99,8 @@ export interface PhotoScore {
   width: number;
   height: number;
   chosen: boolean;
+  /** True when this was the user's explicit choice, not the top score. */
+  preferred?: boolean;
   error: string | null;
 }
 
@@ -108,6 +110,8 @@ export interface PhotoSelection {
   count: number;
   chosenIndex: number;
   chosenName: string | null;
+  /** Whether the front was picked by the user or by scoring. */
+  chosenByUser?: boolean;
   scores: PhotoScore[];
 }
 

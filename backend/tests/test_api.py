@@ -147,3 +147,72 @@ def test_delete_address_that_has_nothing_reports_zero(client):
 
 def test_delete_address_requires_an_address(client):
     assert client.delete("/api/generations").status_code == 422
+
+
+# --- clearing the whole world ---
+
+
+def test_reset_world_removes_everything(client):
+    for addr in ("Burruss Hall", "Norris Hall"):
+        for ws in ("reclaimed", "flooded"):
+            client.post("/api/generations", json=_payload(address=addr, world_state=ws))
+    assert len(client.get("/api/generations").json()) == 4
+
+    r = client.delete("/api/world", params={"confirm": "yes"})
+    assert r.status_code == 200
+    assert r.json()["removed"] == 4
+    assert client.get("/api/generations").json() == []
+
+
+def test_reset_world_refuses_without_the_confirmation(client):
+    client.post("/api/generations", json=_payload())
+    # Nothing sits behind this to undo it, so a bare DELETE must not go through.
+    assert client.delete("/api/world").status_code == 422
+    assert client.delete("/api/world", params={"confirm": "no"}).status_code == 400
+    assert client.delete("/api/world", params={"confirm": "YES"}).status_code == 400
+    assert len(client.get("/api/generations").json()) == 1
+
+
+def test_reset_an_empty_world_is_not_an_error(client):
+    r = client.delete("/api/world", params={"confirm": "yes"})
+    assert r.status_code == 200
+    assert r.json()["removed"] == 0
+
+
+def test_history_is_empty_after_a_reset(client):
+    client.post("/api/generations", json=_payload())
+    client.delete("/api/world", params={"confirm": "yes"})
+    assert client.get("/api/history", params={"address": "Burruss Hall"}).json() == []
+
+
+def test_removing_a_buildings_only_state_removes_the_building(client):
+    gid = client.post("/api/generations", json=_payload(world_state="scorched")).json()["id"]
+    assert client.delete(f"/api/generations/{gid}").status_code == 204
+    # Nothing left under that address, so the map has nothing to draw for it.
+    assert client.get("/api/history", params={"address": "Burruss Hall"}).json() == []
+    assert client.get("/api/generations").json() == []
+
+
+def test_a_freed_address_can_be_given_a_new_state(client):
+    """Remove the scorch, then flood the same building."""
+    gid = client.post("/api/generations", json=_payload(world_state="scorched")).json()["id"]
+    client.delete(f"/api/generations/{gid}")
+    again = client.post("/api/generations", json=_payload(world_state="flooded"))
+    assert again.status_code == 201
+    states = [r["world_state"] for r in client.get("/api/history", params={"address": "Burruss Hall"}).json()]
+    assert states == ["flooded"]
+
+
+def test_the_suite_cannot_reach_the_real_database():
+    """The session fixture must actually redirect the process-wide store.
+
+    Two test modules build a TestClient without overriding the store
+    dependency, so a route reached through one of them runs against whatever
+    `get_store()` returns. With `DELETE /api/world` in the API, that has to not
+    be someone's real world.
+    """
+    from app.config import get_settings
+    from app.store import get_store
+
+    assert "local.db" not in str(get_settings().sqlite_path)
+    assert "local.db" not in str(get_store().health()["path"])

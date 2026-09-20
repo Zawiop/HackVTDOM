@@ -36,3 +36,20 @@ class GenerationStore(Protocol):
     def delete_by_address(self, address: str) -> int:
         """Remove every generation for an address. Returns how many went."""
         ...
+
+    def delete_all(self) -> int:
+        """Empty the world. Returns how many rows went."""
+        ...
+
+    def restore_generations(self, rows: list[Generation]) -> int:
+        """Re-insert rows verbatim, keeping their own `id` and `created_at`.
+
+        `save_generation` mints a fresh id and timestamp, which is right for a
+        new generation and wrong for every case here: undo has to put a row
+        back as the thing it was, and an imported world has to keep the ids its
+        `propagated_from` links point at. Rows whose id is already present are
+        skipped rather than duplicated, so restoring twice is harmless.
+
+        Returns how many rows were actually inserted.
+        """
+        ...

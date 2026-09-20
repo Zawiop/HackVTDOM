@@ -1,0 +1,449 @@
+{
+ "version": 1,
+ "kind": "scorched-nebraska-world",
+ "name": "Virginia Tech drillfield \u2014 eight halls",
+ "note": "The committed demo world. Every URL points at backend/assets/samples/, which is in the repo, so POST /api/world/seed fills a fresh clone with no network and no GPU time. Placements are real step-08 output, not hand-written: Holden is auto-low on its own merits and is what the correction UI demonstrates against.",
+ "count": 8,
+ "generations": [
+  {
+   "id": "8f5ec1a8-6860-4688-a088-77b65281efdd",
+   "address": "Burruss Hall, Blacksburg, VA",
+   "lat": 37.22906,
+   "lng": -80.42372,
+   "source_photo": "/assets/samples/burruss_source.jpg",
+   "artifact": "/assets/samples/burruss_scorched.png",
+   "placement": {
+    "rotationDegrees": 137.07,
+    "scale": 1.0001,
+    "scaleXYZ": [
+     1.0001,
+     1.0,
+     1.8843
+    ],
+    "position": [
+     37.229044,
+     -80.42374,
+     0.0
+    ],
+    "confidence": "auto-high",
+    "scoredRotationCandidates": [
+     {
+      "rotationDegrees": 137.07,
+      "iou": 0.5571,
+      "offsetDegrees": 0.0,
+      "scale": 1.0001
+     },
+     {
+      "rotationDegrees": 227.07,
+      "iou": 0.2622,
+      "offsetDegrees": 90.0,
+      "scale": 0.6949
+     },
+     {
+      "rotationDegrees": 317.07,
+      "iou": 0.5571,
+      "offsetDegrees": 180.0,
+      "scale": 1.0001
+     },
+     {
+      "rotationDegrees": 47.07,
+      "iou": 0.2622,
+      "offsetDegrees": 270.0,
+      "scale": 0.6949
+     }
+    ],
+    "footprintWidthMeters": 101.88,
+    "footprintDepthMeters": 70.79
+   },
+   "mesh_url": "/assets/samples/burruss_scorched.glb",
+   "world_state": "scorched",
+   "confidence_state": "auto-high",
+   "propagated_from": null,
+   "created_at": "2026-09-20T02:50:46.017469+00:00"
+  },
+  {
+   "id": "92cd29eb-f7dc-470c-8591-5558310f7c05",
+   "address": "Burruss Hall, Blacksburg, VA",
+   "lat": 37.22906,
+   "lng": -80.42372,
+   "source_photo": "/assets/samples/burruss_source.jpg",
+   "artifact": "/assets/samples/burruss_flooded.png",
+   "placement": {
+    "rotationDegrees": 137.07,
+    "scale": 1.0001,
+    "scaleXYZ": [
+     1.0001,
+     1.0,
+     1.6993
+    ],
+    "position": [
+     37.229044,
+     -80.42374,
+     0.0
+    ],
+    "confidence": "auto-high",
+    "scoredRotationCandidates": [
+     {
+      "rotationDegrees": 137.07,
+      "iou": 0.6119,
+      "offsetDegrees": 0.0,
+      "scale": 1.0001
+     },
+     {
+      "rotationDegrees": 227.07,
+      "iou": 0.2913,
+      "offsetDegrees": 90.0,
+      "scale": 0.6949
+     },
+     {
+      "rotationDegrees": 317.07,
+      "iou": 0.6119,
+      "offsetDegrees": 180.0,
+      "scale": 1.0001
+     },
+     {
+      "rotationDegrees": 47.07,
+      "iou": 0.2913,
+      "offsetDegrees": 270.0,
+      "scale": 0.6949
+     }
+    ],
+    "footprintWidthMeters": 101.88,
+    "footprintDepthMeters": 70.79
+   },
+   "mesh_url": "/assets/samples/burruss_flooded.glb",
+   "world_state": "flooded",
+   "confidence_state": "auto-high",
+   "propagated_from": null,
+   "created_at": "2026-09-20T02:50:46.023236+00:00"
+  },
+  {
+   "id": "d6658fba-cccf-4f1c-a15c-13baa0782a81",
+   "address": "Hitt Hall, Blacksburg, VA",
+   "lat": 37.22945,
+   "lng": -80.42606,
+   "source_photo": "/assets/samples/burruss_source.jpg",
+   "artifact": "/assets/samples/burruss_flooded.png",
+   "placement": {
+    "rotationDegrees": 46.46,
+    "scale": 0.6956,
+    "scaleXYZ": [
+     1.0,
+     1.0,
+     0.6956
+    ],
+    "position": [
+     37.2294296,
+     -80.4260836,
+     0.0
+    ],
+    "confidence": "auto-high",
+    "scoredRotationCandidates": [
+     {
+      "rotationDegrees": 46.46,
+      "iou": 0.5193,
+      "offsetDegrees": 0.0,
+      "scale": 0.6956
+     },
+     {
+      "rotationDegrees": 136.46,
+      "iou": 0.3465,
+      "offsetDegrees": 90.0,
+      "scale": 0.52
+     },
+     {
+      "rotationDegrees": 226.46,
+      "iou": 0.5193,
+      "offsetDegrees": 180.0,
+      "scale": 0.6956
+     },
+     {
+      "rotationDegrees": 316.46,
+      "iou": 0.3465,
+      "offsetDegrees": 270.0,
+      "scale": 0.52
+     }
+    ],
+    "footprintWidthMeters": 94.69,
+    "footprintDepthMeters": 49.25
+   },
+   "mesh_url": "/assets/samples/hitt_flooded.glb",
+   "world_state": "flooded",
+   "confidence_state": "auto-high",
+   "propagated_from": null,
+   "created_at": "2026-09-20T02:50:46.028531+00:00"
+  },
+  {
+   "id": "8b914b96-efc1-4064-b660-65c058bd2f2f",
+   "address": "Norris Hall, Blacksburg, VA",
+   "lat": 37.22974,
+   "lng": -80.42315,
+   "source_photo": "/assets/samples/burruss_source.jpg",
+   "artifact": "/assets/samples/burruss_flooded.png",
+   "placement": {
+    "rotationDegrees": 49.92,
+    "scale": 1.0,
+    "scaleXYZ": [
+     1.0,
+     1.0,
+     1.7753
+    ],
+    "position": [
+     37.2297406,
+     -80.4231497,
+     0.0
+    ],
+    "confidence": "auto-high",
+    "scoredRotationCandidates": [
+     {
+      "rotationDegrees": 49.92,
+      "iou": 0.441,
+      "offsetDegrees": 0.0,
+      "scale": 1.0
+     },
+     {
+      "rotationDegrees": 139.92,
+      "iou": 0.1428,
+      "offsetDegrees": 90.0,
+      "scale": 0.7259
+     },
+     {
+      "rotationDegrees": 229.92,
+      "iou": 0.441,
+      "offsetDegrees": 180.0,
+      "scale": 1.0
+     },
+     {
+      "rotationDegrees": 319.92,
+      "iou": 0.1428,
+      "offsetDegrees": 270.0,
+      "scale": 0.7259
+     }
+    ],
+    "footprintWidthMeters": 75.77,
+    "footprintDepthMeters": 55.0
+   },
+   "mesh_url": "/assets/samples/norris_flooded.glb",
+   "world_state": "flooded",
+   "confidence_state": "auto-high",
+   "propagated_from": null,
+   "created_at": "2026-09-20T02:50:49.891691+00:00"
+  },
+  {
+   "id": "a54265a2-74a8-4290-9074-b7143a609c2b",
+   "address": "Pamplin Hall, Blacksburg, VA",
+   "lat": 37.22866,
+   "lng": -80.42467,
+   "source_photo": "/assets/samples/burruss_source.jpg",
+   "artifact": "/assets/samples/burruss_flooded.png",
+   "placement": {
+    "rotationDegrees": 46.06,
+    "scale": 1.0,
+    "scaleXYZ": [
+     1.0,
+     1.0,
+     1.9577
+    ],
+    "position": [
+     37.2286589,
+     -80.4246726,
+     0.0
+    ],
+    "confidence": "auto-high",
+    "scoredRotationCandidates": [
+     {
+      "rotationDegrees": 46.06,
+      "iou": 0.5671,
+      "offsetDegrees": 0.0,
+      "scale": 1.0
+     },
+     {
+      "rotationDegrees": 136.06,
+      "iou": 0.2865,
+      "offsetDegrees": 90.0,
+      "scale": 0.8006
+     },
+     {
+      "rotationDegrees": 226.06,
+      "iou": 0.5671,
+      "offsetDegrees": 180.0,
+      "scale": 1.0
+     },
+     {
+      "rotationDegrees": 316.06,
+      "iou": 0.2865,
+      "offsetDegrees": 270.0,
+      "scale": 0.8006
+     }
+    ],
+    "footprintWidthMeters": 79.94,
+    "footprintDepthMeters": 64.0
+   },
+   "mesh_url": "/assets/samples/pamplin_flooded.glb",
+   "world_state": "flooded",
+   "confidence_state": "auto-high",
+   "propagated_from": null,
+   "created_at": "2026-09-20T02:50:49.897059+00:00"
+  },
+  {
+   "id": "a5ed1635-8f92-4643-981c-2a5245d8a542",
+   "address": "Hancock Hall, Blacksburg, VA",
+   "lat": 37.23026,
+   "lng": -80.42426,
+   "source_photo": "/assets/samples/burruss_source.jpg",
+   "artifact": "/assets/samples/burruss_flooded.png",
+   "placement": {
+    "rotationDegrees": 137.11,
+    "scale": 1.0,
+    "scaleXYZ": null,
+    "position": [
+     37.2302579,
+     -80.4242629,
+     0.0
+    ],
+    "confidence": "auto-high",
+    "scoredRotationCandidates": [
+     {
+      "rotationDegrees": 137.11,
+      "iou": 0.591,
+      "offsetDegrees": 0.0,
+      "scale": 1.0
+     },
+     {
+      "rotationDegrees": 227.11,
+      "iou": 0.177,
+      "offsetDegrees": 90.0,
+      "scale": 0.5716
+     },
+     {
+      "rotationDegrees": 317.11,
+      "iou": 0.591,
+      "offsetDegrees": 180.0,
+      "scale": 1.0
+     },
+     {
+      "rotationDegrees": 47.11,
+      "iou": 0.177,
+      "offsetDegrees": 270.0,
+      "scale": 0.5716
+     }
+    ],
+    "footprintWidthMeters": 98.63,
+    "footprintDepthMeters": 56.38
+   },
+   "mesh_url": "/assets/samples/hancock_flooded.glb",
+   "world_state": "flooded",
+   "confidence_state": "auto-high",
+   "propagated_from": null,
+   "created_at": "2026-09-20T02:50:49.902212+00:00"
+  },
+  {
+   "id": "3c0764a8-9a1f-484c-8cd1-6b4349fef084",
+   "address": "Derring Hall, Blacksburg, VA",
+   "lat": 37.22907,
+   "lng": -80.4256,
+   "source_photo": "/assets/samples/burruss_source.jpg",
+   "artifact": "/assets/samples/burruss_flooded.png",
+   "placement": {
+    "rotationDegrees": 45.87,
+    "scale": 0.7885,
+    "scaleXYZ": null,
+    "position": [
+     37.2290725,
+     -80.4255998,
+     0.0
+    ],
+    "confidence": "auto-high",
+    "scoredRotationCandidates": [
+     {
+      "rotationDegrees": 45.87,
+      "iou": 0.7681,
+      "offsetDegrees": 0.0,
+      "scale": 0.7885
+     },
+     {
+      "rotationDegrees": 135.87,
+      "iou": 0.1314,
+      "offsetDegrees": 90.0,
+      "scale": 0.3224
+     },
+     {
+      "rotationDegrees": 225.87,
+      "iou": 0.7681,
+      "offsetDegrees": 180.0,
+      "scale": 0.7885
+     },
+     {
+      "rotationDegrees": 315.87,
+      "iou": 0.1314,
+      "offsetDegrees": 270.0,
+      "scale": 0.3224
+     }
+    ],
+    "footprintWidthMeters": 129.57,
+    "footprintDepthMeters": 41.77
+   },
+   "mesh_url": "/assets/samples/derring_flooded.glb",
+   "world_state": "flooded",
+   "confidence_state": "auto-high",
+   "propagated_from": null,
+   "created_at": "2026-09-20T02:50:49.906892+00:00"
+  },
+  {
+   "id": "9bff2c55-06eb-4f4c-b237-d3b0444ef0ad",
+   "address": "Holden Hall, Blacksburg, VA",
+   "lat": 37.23019,
+   "lng": -80.42238,
+   "source_photo": "/assets/samples/burruss_source.jpg",
+   "artifact": "/assets/samples/burruss_flooded.png",
+   "placement": {
+    "rotationDegrees": 48.49,
+    "scale": 1.0,
+    "scaleXYZ": [
+     1.0,
+     1.0,
+     2.1833
+    ],
+    "position": [
+     37.2301896,
+     -80.4223804,
+     0.0
+    ],
+    "confidence": "auto-low",
+    "scoredRotationCandidates": [
+     {
+      "rotationDegrees": 48.49,
+      "iou": 0.3594,
+      "offsetDegrees": 0.0,
+      "scale": 1.0
+     },
+     {
+      "rotationDegrees": 138.49,
+      "iou": 0.2785,
+      "offsetDegrees": 90.0,
+      "scale": 0.8927
+     },
+     {
+      "rotationDegrees": 228.49,
+      "iou": 0.3594,
+      "offsetDegrees": 180.0,
+      "scale": 1.0
+     },
+     {
+      "rotationDegrees": 318.49,
+      "iou": 0.2785,
+      "offsetDegrees": 270.0,
+      "scale": 0.8927
+     }
+    ],
+    "footprintWidthMeters": 69.29,
+    "footprintDepthMeters": 61.85
+   },
+   "mesh_url": "/assets/samples/holden_flooded.glb",
+   "world_state": "flooded",
+   "confidence_state": "auto-low",
+   "propagated_from": null,
+   "created_at": "2026-09-20T02:50:49.912546+00:00"
+  }
+ ]
+}

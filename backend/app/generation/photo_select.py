@@ -96,8 +96,14 @@ def _blank() -> dict:
     return {"sharpness": 0.0, "exposure": 0.0, "detail": 0.0, "width": 0, "height": 0}
 
 
-def choose_best(photos: list[bytes]) -> tuple[int, list[dict]]:
-    """Return (index of the best photo, a score per photo in upload order).
+def choose_best(photos: list[bytes], prefer: int | None = None) -> tuple[int, list[dict]]:
+    """Return (index of the photo to use, a score per photo in upload order).
+
+    `prefer` is the caller's explicit choice of front view and wins outright:
+    scoring is a sensible default for "which of these is the best photograph",
+    not a judgement about which side of the building someone meant. An
+    out-of-range value is ignored rather than raising, so a stale index from
+    the UI cannot fail the whole generation.
 
     Falls back to the first photo when every candidate scores zero, so a caller
     always gets something to send rather than an error.
@@ -105,9 +111,18 @@ def choose_best(photos: list[bytes]) -> tuple[int, list[dict]]:
     if not photos:
         raise ValueError("no photos given")
     scores = [score_photo(p) for p in photos]
+
+    if prefer is not None and 0 <= prefer < len(photos):
+        best = prefer
+        for i, s in enumerate(scores):
+            s["chosen"] = i == best
+            s["preferred"] = i == best
+        return best, scores
+
     best = max(range(len(scores)), key=lambda i: scores[i]["score"])
     if scores[best]["score"] <= 0:
         best = 0
     for i, s in enumerate(scores):
         s["chosen"] = i == best
+        s["preferred"] = False
     return best, scores

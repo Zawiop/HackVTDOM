@@ -114,3 +114,47 @@ def test_scores_come_back_in_upload_order(sharp, blurry):
 def test_exif_rotation_does_not_break_scoring(sharp):
     rotated = variant(sharp, lambda i: i.rotate(90, expand=True))
     assert score_photo(rotated)["ok"] is True
+
+
+# --- the caller naming the front view ---
+
+
+def test_an_explicit_choice_beats_the_score(sharp, blurry):
+    # Scoring answers "which is the best photograph". That is not the same
+    # question as "which side of the building did you mean", so the caller wins.
+    best, scores = choose_best([blurry, sharp], prefer=0)
+    assert best == 0
+    assert scores[0]["preferred"] is True
+    assert scores[1]["preferred"] is False
+
+
+def test_the_chosen_photo_is_still_marked_chosen(sharp, blurry):
+    _, scores = choose_best([blurry, sharp], prefer=0)
+    assert [s["chosen"] for s in scores] == [True, False]
+
+
+def test_scores_are_still_reported_for_a_forced_choice(sharp, blurry):
+    # The UI shows them, so a user can see they picked the weaker photo.
+    _, scores = choose_best([blurry, sharp], prefer=0)
+    assert scores[1]["score"] > scores[0]["score"]
+
+
+def test_no_preference_falls_back_to_scoring(sharp, blurry):
+    best, scores = choose_best([blurry, sharp], prefer=None)
+    assert best == 1
+    assert not any(s["preferred"] for s in scores)
+
+
+def test_an_out_of_range_choice_is_ignored_rather_than_raising(sharp, blurry):
+    # A stale index from the UI must not fail the whole generation.
+    for bad in (-1, 2, 99):
+        best, _ = choose_best([blurry, sharp], prefer=bad)
+        assert best == 1
+
+
+def test_choosing_an_unusable_photo_is_still_honoured(sharp):
+    # If the user insists on a broken file, say so downstream rather than
+    # silently substituting a different photo than the one they named.
+    best, scores = choose_best([b"garbage", sharp], prefer=0)
+    assert best == 0
+    assert scores[0]["ok"] is False

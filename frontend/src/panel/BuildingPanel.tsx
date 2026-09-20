@@ -3,7 +3,7 @@ import ConfidenceBadge from "./ConfidenceBadge";
 import { deleteAddress, deleteGeneration, getHistory } from "../api/client";
 import HistoryTimeline from "./HistoryTimeline";
 import CorrectionControls from "../correction/CorrectionControls";
-import type { Generation, PlacementOverrides } from "../types/contract";
+import type { Generation, PlacementOverrides, PlacementRecord } from "../types/contract";
 
 /** An image that degrades to a labelled placeholder instead of a broken icon. */
 function Thumb({ src, caption }: { src?: string | null; caption: string }) {
@@ -41,6 +41,8 @@ export default function BuildingPanel({
   isPinned,
   onTogglePin,
   onRemoved,
+  onCorrectionToggle,
+  draggedPosition,
 }: {
   row: Generation;
   onClose: () => void;
@@ -53,6 +55,9 @@ export default function BuildingPanel({
   onTogglePin?: (row: Generation) => void;
   /** Called after rows are removed so the map can drop them. */
   onRemoved?: () => void;
+  /** Tells the map whether dragging should move the building or pan. */
+  onCorrectionToggle?: (open: boolean) => void;
+  draggedPosition?: PlacementRecord["position"] | null;
 }) {
   const [history, setHistory] = useState<Generation[] | null>(null);
   const [historyError, setHistoryError] = useState<Error | null>(null);
@@ -100,6 +105,13 @@ export default function BuildingPanel({
     setConfirming(null);
     setRemoveError(null);
   }, [row.id, row.confidence_state]);
+
+  // Dragging only moves a building while its correction controls are open;
+  // the rest of the time a drag on the map has to pan, as it always did.
+  useEffect(() => {
+    onCorrectionToggle?.(showCorrection);
+    return () => onCorrectionToggle?.(false);
+  }, [showCorrection, onCorrectionToggle]);
 
   const p = row.placement ?? {};
   const bestIou = (p.scoredRotationCandidates ?? [])
@@ -149,7 +161,12 @@ export default function BuildingPanel({
         </button>
       </div>
       {showCorrection && (
-        <CorrectionControls row={row} onPreview={onPreview} onSaved={onSaved} />
+        <CorrectionControls
+          row={row}
+          onPreview={onPreview}
+          onSaved={onSaved}
+          draggedPosition={draggedPosition}
+        />
       )}
 
       <h3>history — this address</h3>
@@ -173,7 +190,9 @@ export default function BuildingPanel({
         <>
           <p className="hint">
             {confirming === "state"
-              ? `Remove the ${row.world_state ?? "current"} state of this building?`
+              ? (history?.length ?? 1) < 2
+                ? `Remove the ${row.world_state ?? "current"} state? It is the only one, so the building goes with it.`
+                : `Remove the ${row.world_state ?? "current"} state of this building? Its other ${(history?.length ?? 2) - 1} stay.`
               : `Remove ${(row.address ?? "").split(",")[0]} and all ${history?.length ?? 1} of its states?`}{" "}
             This cannot be undone.
           </p>
@@ -186,17 +205,15 @@ export default function BuildingPanel({
         </>
       ) : (
         <div className="btn-grid">
-          <button onClick={() => setConfirming("state")} disabled={(history?.length ?? 1) < 2}>
-            this state
-          </button>
+          <button onClick={() => setConfirming("state")}>this state</button>
           <button onClick={() => setConfirming("building")}>whole building</button>
         </div>
       )}
-      {(history?.length ?? 1) < 2 && (
-        <p className="hint">
-          Only one state here — removing it removes the building.
-        </p>
-      )}
+      <p className="hint">
+        {(history?.length ?? 1) < 2
+          ? "Only one state here, so removing it clears the building and its terrain."
+          : "Removing a state leaves the building's other states in place."}
+      </p>
     </aside>
   );
 }

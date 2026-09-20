@@ -60,6 +60,37 @@ def size() -> int:
     return len(_store)
 
 
+def seed_from(path: Path) -> int:
+    """Merge a git-committed snapshot into the live cache. Returns entries added.
+
+    Used at boot on an ephemeral host (Render's free tier wipes local disk on
+    every cold start) so the demo buildings never depend on Overpass answering
+    at exactly the moment an instance wakes up — Overpass has been down at some
+    point on every day of this project. Never overwrites an entry the live
+    cache already has; a snapshot is a floor, not a source of truth.
+    """
+    _ensure_loaded()
+    try:
+        raw = json.loads(Path(path).read_text())
+    except (OSError, ValueError) as exc:
+        logger.warning("Could not read footprint cache seed at %s: %s", path, exc)
+        return 0
+
+    added = 0
+    for entry in raw.get("entries", []):
+        try:
+            key = (entry["lat"], entry["lng"], entry["radius"])
+        except (KeyError, TypeError):
+            continue
+        if key not in _store:
+            _store[key] = (entry["elements"], entry["source"])
+            added += 1
+    if added:
+        _save()
+        logger.info("Seeded %d footprint(s) from %s", added, path)
+    return added
+
+
 def _ensure_loaded() -> None:
     global _loaded
     if _loaded:
