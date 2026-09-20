@@ -533,3 +533,29 @@ def test_the_boot_path_leaves_a_populated_store_alone(client, store, monkeypatch
 
     # A warm instance must not have the demo world appear underneath a real one.
     assert [r.address for r in store.list_generations()] == ["Somewhere Real"]
+
+
+def test_the_seed_world_shows_a_real_before_and_after():
+    """source_photo and artifact must not be the same picture.
+
+    The panel puts them side by side as "source photo" / "artifact", and that
+    pair is the pitch's whole claim — here is the building, here is the
+    building transformed. A commit once pointed source_photo at the artifact
+    for all eight rows, so every building showed the same image twice and the
+    comparison silently said nothing.
+    """
+    for row in worldio.load_seed_world():
+        assert row.source_photo and row.artifact, row.address
+        assert row.source_photo != row.artifact, (
+            f"{row.address} shows the same image on both sides of the before/after"
+        )
+
+
+def test_every_seed_image_is_actually_in_the_repo():
+    """A seed row pointing at a file that is not committed renders as 'no image'."""
+    from app.services.worldio import ASSETS_DIR
+
+    for row in worldio.load_seed_world():
+        for url in (row.source_photo, row.artifact, row.mesh_url):
+            assert url.startswith("/assets/"), f"{row.address}: {url} is not a committed asset"
+            assert (ASSETS_DIR / url[len("/assets/"):]).is_file(), f"{row.address}: {url}"

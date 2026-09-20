@@ -10,7 +10,7 @@
    "address": "Burruss Hall, Blacksburg, VA",
    "lat": 37.22906,
    "lng": -80.42372,
-   "source_photo": "/assets/samples/burruss_scorched.png",
+   "source_photo": "/assets/samples/burruss_source.jpg",
    "artifact": "/assets/samples/burruss_scorched.png",
    "placement": {
     "rotationDegrees": 137.07,
@@ -66,7 +66,7 @@
    "address": "Burruss Hall, Blacksburg, VA",
    "lat": 37.22906,
    "lng": -80.42372,
-   "source_photo": "/assets/samples/burruss_flooded.png",
+   "source_photo": "/assets/samples/burruss_source.jpg",
    "artifact": "/assets/samples/burruss_flooded.png",
    "placement": {
     "rotationDegrees": 137.07,
@@ -118,7 +118,7 @@
    "address": "Hitt Hall, Blacksburg, VA",
    "lat": 37.22945,
    "lng": -80.42606,
-   "source_photo": "/assets/samples/hitt_flooded.png",
+   "source_photo": "/assets/samples/burruss_source.jpg",
    "artifact": "/assets/samples/hitt_flooded.png",
    "placement": {
     "rotationDegrees": 46.46,
@@ -170,7 +170,7 @@
    "address": "Norris Hall, Blacksburg, VA",
    "lat": 37.22974,
    "lng": -80.42315,
-   "source_photo": "/assets/samples/norris_flooded.png",
+   "source_photo": "/assets/samples/burruss_source.jpg",
    "artifact": "/assets/samples/norris_flooded.png",
    "placement": {
     "rotationDegrees": 49.92,
@@ -222,7 +222,7 @@
    "address": "Pamplin Hall, Blacksburg, VA",
    "lat": 37.22866,
    "lng": -80.42467,
-   "source_photo": "/assets/samples/pamplin_flooded.png",
+   "source_photo": "/assets/samples/burruss_source.jpg",
    "artifact": "/assets/samples/pamplin_flooded.png",
    "placement": {
     "rotationDegrees": 46.06,
@@ -274,7 +274,7 @@
    "address": "Hancock Hall, Blacksburg, VA",
    "lat": 37.23026,
    "lng": -80.42426,
-   "source_photo": "/assets/samples/hancock_flooded.png",
+   "source_photo": "/assets/samples/burruss_source.jpg",
    "artifact": "/assets/samples/hancock_flooded.png",
    "placement": {
     "rotationDegrees": 137.11,
@@ -326,7 +326,7 @@
    "address": "Derring Hall, Blacksburg, VA",
    "lat": 37.22907,
    "lng": -80.4256,
-   "source_photo": "/assets/samples/derring_flooded.png",
+   "source_photo": "/assets/samples/burruss_source.jpg",
    "artifact": "/assets/samples/derring_flooded.png",
    "placement": {
     "rotationDegrees": 45.87,
@@ -378,7 +378,7 @@
    "address": "Holden Hall, Blacksburg, VA",
    "lat": 37.23019,
    "lng": -80.42238,
-   "source_photo": "/assets/samples/holden_flooded.png",
+   "source_photo": "/assets/samples/burruss_source.jpg",
    "artifact": "/assets/samples/holden_flooded.png",
    "placement": {
     "rotationDegrees": 48.49,

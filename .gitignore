@@ -62,7 +62,10 @@ tmp/
 # Local placement debug render (scripts/placement_preview.py)
 backend/placement-preview.html
 
-# Runtime undo stash (written by the app, not source)
+# Runtime undo stash (app/store/trash.py). Rewritten on every delete and it
+# holds whatever rows were last removed, so committing it both churns the
+# history and puts one machine's world state in everyone else's checkout.
 backend/trash.json
+**/trash.json
 .vercel
 .env*

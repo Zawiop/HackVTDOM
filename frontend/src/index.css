@@ -171,13 +171,17 @@ input[type="range"] { flex: 1; accent-color: var(--sn-accent); padding: 0; }
 
 .thumbs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .thumbs figure { margin: 0; }
+/* `contain`, not `cover`. These two images are the whole before/after claim,
+   and cropping a 1168x880 generated frame into a 92px band cut the building
+   out of it — the flooded artifact read as a photograph of open water. */
 .thumbs img {
-  width: 100%; height: 92px; object-fit: cover;
-  border: 1px solid var(--sn-border); border-radius: 4px; background: var(--sn-bg);
+  width: 100%; height: 104px; object-fit: contain;
+  border: 1px solid var(--sn-border); border-radius: 4px;
+  background: #100e0c;
 }
 .thumbs figcaption { font-size: 10px; color: var(--sn-muted); margin-top: 3px; }
 .thumb-missing {
-  width: 100%; height: 92px; display: grid; place-items: center;
+  width: 100%; height: 104px; display: grid; place-items: center;
   border: 1px dashed var(--sn-border); border-radius: 4px;
   background: var(--sn-bg); color: var(--sn-muted); font-size: 10px;
 }
@@ -867,4 +871,39 @@ button.danger:hover:not(:disabled) {
 @media (max-width: 520px) {
   .photo-picker-actions { grid-template-columns: 1fr; }
   .photo-picker-actions .photo-source:first-child:nth-last-child(3) { grid-column: auto; }
+}
+
+/* --- final polish ---------------------------------------------------------
+   Small things that were absent rather than wrong: motion on the controls
+   that change state, and a focus ring that survives on the dark panel. */
+
+button, .btn-link, .roster-item, .ws-option {
+  transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
+}
+
+/* Everything animated above is a colour change, so a reduced-motion request
+   costs nothing to honour. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* The slider is the one control people drag rather than click. */
+.reveal input[type="range"] { cursor: grab; }
+.reveal input[type="range"]:active { cursor: grabbing; }
+
+/* Selection highlight in the app's own palette rather than the browser blue. */
+::selection {
+  background: color-mix(in srgb, var(--sn-accent) 40%, transparent);
+  color: var(--sn-text);
+}
+
+/* A focus ring that reads on both the panel and the map bar. */
+:focus-visible {
+  outline: 2px solid var(--sn-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
