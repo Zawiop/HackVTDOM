@@ -14,7 +14,6 @@ from .routers import (
     photo,
     placement,
     propagate,
-    stubs,
     worldstate,
 )
 
@@ -63,7 +62,6 @@ app.include_router(generation.router, prefix="/api")
 # These two declare their own /api prefix.
 app.include_router(generations.router)
 app.include_router(propagate.router)
-app.include_router(stubs.router, prefix="/api")
 
 generation.setup(app)  # /outputs + /assets static files, cutout-model warmup
 

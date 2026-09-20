@@ -1,5 +1,8 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+// vitest's defineConfig, not vite's: the `test` block below is not part of
+// vite's own config type, so importing from "vite" fails `tsc -b` and takes
+// `npm run build` down with it.
+import { defineConfig } from "vitest/config";
 
 // The backend runs on :8000. Proxying /api keeps the frontend origin-clean and
 // means no CORS surprises when a teammate opens it from a different host.

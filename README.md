@@ -81,7 +81,25 @@ Never commit a `.env`.
 
 ## Team
 
-Built by our VTHacks 14 team. See `markdown_files/` for the module breakdown, and `STATUS.md`
+Built by our VTHacks 14 team. The pipeline is specified as fourteen numbered
+modules in `markdown_files/`; each of us owned a contiguous slice of it.
+
+| Who | Modules | What that covers |
+| --- | --- | --- |
+| **Ajeet Bondugula** | 01, 02 | Project skeleton and the entry pipeline: address geocoding, and the OSM footprint match with its ambiguity handling, mirror fallback and cache |
+| **Aditya** (`autobot433`) | 03, 04, 08 | Photo input including the Mapillary street-level layer, the World State prompt set, and the placement transform |
+| **Arrush Shah** | 05, 06, 07 | AI image editing, image-to-3D mesh generation, and mesh normalization |
+| **Rishik Uppalapati** | 09, 10, 11, 12 | Correction UI, World Propagate, Supabase persistence, and the MapLibre + deck.gl 3D map |
+
+Modules 04, 08 and 13 were landed on `main` ahead of Aditya's push while his
+branch was still open; he merged around them, kept the versions already in place
+rather than forcing a conflict on the geometry core, and contributed step 03's
+Mapillary layer — the last unimplemented route in the project — on top. His
+branch also verified the Mapillary API live and documented that it returns
+non-deterministic result counts for identical queries, which is why that lookup
+retries before reporting no coverage.
+
+See `markdown_files/` for the module breakdown, and `STATUS.md`
 for decisions made where the specs were silent.
 
 Map data © OpenStreetMap contributors, licensed under the ODbL.

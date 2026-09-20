@@ -11,11 +11,11 @@ here raises and nothing produces a user-facing error state.
 from __future__ import annotations
 
 import logging
-import math
 from typing import Any, Dict, List, Optional
 
 import httpx
 
+from .geo import haversine_meters
 from .geo_math import meters_per_degree
 
 log = logging.getLogger("scorched.mapillary")
@@ -53,15 +53,6 @@ def bbox_around(lat: float, lng: float, meters: float) -> str:
     )
 
 
-def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
-    r = 6371008.8
-    d_lat = math.radians(lat2 - lat1)
-    d_lng = math.radians(lng2 - lng1)
-    s = (
-        math.sin(d_lat / 2) ** 2
-        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(d_lng / 2) ** 2
-    )
-    return 2 * r * math.asin(min(1.0, math.sqrt(s)))
 
 
 def _to_photo(img: Dict[str, Any], lat: float, lng: float) -> Optional[Dict[str, Any]]:
@@ -87,7 +78,7 @@ def _to_photo(img: Dict[str, Any], lat: float, lng: float) -> Optional[Dict[str,
         "capturedAt": int(captured) if isinstance(captured, (int, float)) else None,
         "location": location,
         "distanceMeters": (
-            _haversine_m(lat, lng, location["lat"], location["lng"]) if location else None
+            haversine_meters(lat, lng, location["lat"], location["lng"]) if location else None
         ),
     }
 

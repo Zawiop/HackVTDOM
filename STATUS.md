@@ -135,6 +135,28 @@ is 600 s and held in memory, so after a quota failure a provider is skipped for 
 minutes; restart the server to clear it or you will see `skipped: true` and think
 the new key failed.
 
+## Every route is implemented
+
+`app/routers/stubs.py` is gone: steps 01-13 all have real routes and the file had
+been reduced to an empty router plus an unused helper. The API is 18 routes with
+no 501s.
+
+Step 03's Mapillary lookup (Aditya) closed the last one. Worth knowing from his
+live verification: `graph.mapillary.com` returns **non-deterministic counts for
+byte-identical queries** — five consecutive identical requests to a dense area
+returned 0, 2, 5, 6 and 5 images. A single empty `data` array is therefore often
+a false negative, which is why the lookup retries at the spec'd radius before
+making one wider pass. Manual upload remains the required path regardless.
+
+Two things his merge needed on arrival:
+
+- `vite.config.ts` gained a `test` block but still imported `defineConfig` from
+  `"vite"`, whose config type does not include it. That failed `tsc -b`, which
+  `npm run build` runs first — so the production build was broken. It imports
+  from `"vitest/config"` now.
+- `mapillary.py` carried its own `_haversine_m`, duplicating
+  `services/geo.py`. Two copies of a distance formula is how they drift.
+
 ## Step 13 skin, and four fixes from the error audit
 
 **Skin (13-ui-skin.md).** Warm dark panels on amber and moss, Chakra Petch on
