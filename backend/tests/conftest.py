@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.main import app  # noqa: E402
 from app.models import GenerationCreate, Placement, ScoredRotation  # noqa: E402
+from app.routers.world import get_trash_path  # noqa: E402
 from app.store import get_store  # noqa: E402
 from app.store.sqlite_store import SqliteStore  # noqa: E402
 
@@ -46,10 +47,17 @@ def store(tmp_path) -> SqliteStore:
 
 
 @pytest.fixture
-def client(store):
+def trash_path(tmp_path) -> Path:
+    """Per-test undo stash. Sharing one would let an undo cross tests."""
+    return tmp_path / "trash.json"
+
+
+@pytest.fixture
+def client(store, trash_path):
     from fastapi.testclient import TestClient
 
     app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_trash_path] = lambda: trash_path
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

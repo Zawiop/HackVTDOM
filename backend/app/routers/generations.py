@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from ..models import Correction, Generation, GenerationCreate
-from ..store import GenerationStore, NotFoundError, PersistenceError, get_store
+from ..store import GenerationStore, NotFoundError, PersistenceError, get_store, trash
+from .world import get_trash_path
 
 log = logging.getLogger("scorched.generations")
 router = APIRouter(prefix="/api", tags=["generations"])
@@ -92,15 +94,28 @@ def correct_generation(
 
 @router.delete("/generations/{generation_id}", status_code=204)
 def delete_generation(
-    generation_id: str, store: GenerationStore = Depends(get_store)
+    generation_id: str,
+    store: GenerationStore = Depends(get_store),
+    trash_path: Path = Depends(get_trash_path),
 ) -> Response:
     """Remove one generation.
 
     Deliberately per-row rather than per-address: a building usually has
     several World States and the common case is dropping one of them, not
     wiping the building. Use the address form below to clear it entirely.
+
+    The row is stashed before it goes, so POST /api/world/undo can put it back.
     """
     try:
+        # Read it first — both to 404 on a bad id and to have something to
+        # stash. Deleting and then discovering there is nothing to undo is the
+        # wrong order.
+        row = store.get_generation(generation_id)
+        trash.stash(
+            trash_path, [row],
+            action="delete-generation",
+            label=f"{row.address} — {row.world_state or 'no world state'}",
+        )
         store.delete_generation(generation_id)
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=e.detail) from e
@@ -114,32 +129,54 @@ def delete_generation(
 def delete_address(
     address: str = Query(..., min_length=1),
     store: GenerationStore = Depends(get_store),
+    trash_path: Path = Depends(get_trash_path),
 ) -> dict:
-    """Remove every generation for an address — clears the building off the map."""
+    """Remove every generation for an address — clears the building off the map.
+
+    Stashed first, so POST /api/world/undo restores the whole building.
+    """
+    address = address.strip()
     try:
-        removed = store.delete_by_address(address.strip())
+        doomed = store.get_history_for_address(address)
+        stashed = trash.stash(
+            trash_path, doomed,
+            action="delete-address",
+            label=f"{address} — all {len(doomed)} state(s)",
+        )
+        removed = store.delete_by_address(address)
     except PersistenceError as e:
         raise _loud(e) from e
     log.info("deleted %d generation(s) for %r", removed, address)
-    return {"address": address, "removed": removed}
+    return {"address": address, "removed": removed, "undoable": stashed is not None}
 
 
 @router.delete("/world", status_code=200)
 def reset_world(
     confirm: str = Query(..., description="must be the literal string 'yes'"),
     store: GenerationStore = Depends(get_store),
+    trash_path: Path = Depends(get_trash_path),
 ) -> dict:
     """Empty the world — every building, every World State.
 
-    Requires `confirm=yes` in the query string. This cannot be undone and there
-    is no per-row safety net behind it, so a bare DELETE on this path is
-    refused rather than trusted.
+    Requires `confirm=yes` in the query string, so a bare DELETE on this path
+    is refused rather than trusted.
+
+    The whole world is stashed before it goes: POST /api/world/undo puts it
+    back verbatim, with no regeneration. `undoable: false` in the response
+    means the stash could not be written and the reset is final — check it
+    rather than assuming the net is there.
     """
     if confirm != "yes":
         raise HTTPException(status_code=400, detail="pass confirm=yes to reset the world")
     try:
+        doomed = store.list_generations()
+        stashed = trash.stash(
+            trash_path, doomed,
+            action="reset-world",
+            label=f"the whole world — {len(doomed)} generation(s)",
+        )
         removed = store.delete_all()
     except PersistenceError as e:
         raise _loud(e) from e
     log.warning("world reset: removed %d generation(s)", removed)
-    return {"removed": removed}
+    return {"removed": removed, "undoable": stashed is not None}

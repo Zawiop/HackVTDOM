@@ -162,3 +162,36 @@ class SupabaseStore:
             headers={"Prefer": "return=representation"},
         )
         return len(rows)
+
+    def restore_generations(self, rows: list[Generation]) -> int:
+        """Insert rows with their original id and created_at. See the protocol."""
+        if not rows:
+            return 0
+        body = []
+        for row in rows:
+            d = row.model_dump()
+            body.append({
+                "id": str(d["id"]),
+                "address": d["address"],
+                "lat": float(d["lat"]),
+                "lng": float(d["lng"]),
+                "source_photo": d.get("source_photo"),
+                "artifact": d.get("artifact"),
+                "placement": d.get("placement") or {},
+                "mesh_url": d.get("mesh_url"),
+                "world_state": d.get("world_state"),
+                "confidence_state": d.get("confidence_state") or "auto-low",
+                "propagated_from": d.get("propagated_from"),
+                "created_at": d.get("created_at"),
+            })
+        # `merge-duplicates` on the primary key: a row that is already there is
+        # left alone rather than failing the whole batch, matching the SQLite
+        # backend's `insert or ignore`. The representation comes back so the
+        # count is what the server actually holds, not what we hoped.
+        written = self._request(
+            "restore_generations", "POST", json=body,
+            headers={
+                "Prefer": "return=representation,resolution=merge-duplicates",
+            },
+        )
+        return len(written)

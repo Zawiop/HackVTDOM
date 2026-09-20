@@ -6,12 +6,13 @@ from functools import lru_cache
 from ..config import Settings, get_settings
 from .base import GenerationStore
 from .errors import NotFoundError, PersistenceError
+from . import trash
 from .sqlite_store import SqliteStore
 from .supabase_store import SupabaseStore
 
 __all__ = [
     "GenerationStore", "PersistenceError", "NotFoundError",
-    "SqliteStore", "SupabaseStore", "get_store", "build_store",
+    "SqliteStore", "SupabaseStore", "get_store", "build_store", "trash",
 ]
 
 

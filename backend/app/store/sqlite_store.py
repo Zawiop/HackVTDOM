@@ -179,3 +179,39 @@ class SqliteStore:
                 return cur.rowcount or 0
         except sqlite3.Error as e:
             raise PersistenceError("delete_all", str(e)) from e
+
+    def restore_generations(self, rows: list[Generation]) -> int:
+        """Insert rows with their original id and created_at. See the protocol."""
+        if not rows:
+            return 0
+        records = []
+        for row in rows:
+            d = row.model_dump()
+            placement = d.get("placement") or {}
+            records.append({
+                "id": str(d["id"]),
+                "address": d["address"],
+                "lat": float(d["lat"]),
+                "lng": float(d["lng"]),
+                "source_photo": d.get("source_photo"),
+                "artifact": d.get("artifact"),
+                "placement": json.dumps(placement),
+                "mesh_url": d.get("mesh_url"),
+                "world_state": d.get("world_state"),
+                "confidence_state": d.get("confidence_state") or "auto-low",
+                "propagated_from": d.get("propagated_from"),
+                "created_at": d.get("created_at") or datetime.now(timezone.utc).isoformat(),
+            })
+        cols = ", ".join(_COLUMNS)
+        marks = ", ".join(f":{c}" for c in _COLUMNS)
+        try:
+            with self._conn() as c:
+                # `or ignore` against the unique index on id: restoring a world
+                # that partly survived must top it up, not fail on the first
+                # row that is already there.
+                cur = c.executemany(
+                    f"insert or ignore into generations ({cols}) values ({marks})", records
+                )
+                return cur.rowcount or 0
+        except sqlite3.Error as e:
+            raise PersistenceError("restore_generations", str(e)) from e
