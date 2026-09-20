@@ -13,6 +13,10 @@
       "source": "/outputs/:path*",
       "destination": "https://backgrounds-polls-broadcasting-november.trycloudflare.com/outputs/:path*"
     },
+    {
+      "source": "/assets/samples/:path*",
+      "destination": "https://backgrounds-polls-broadcasting-november.trycloudflare.com/assets/samples/:path*"
+    },
     { "source": "/((?!api|outputs|assets|\\.well-known).*)", "destination": "/index.html" }
   ]
 }

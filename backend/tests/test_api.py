@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import pytest
 
+from app.generation import config as gen_config
+
 
 def _payload(address="Burruss Hall", world_state="reclaimed", confidence="auto-high"):
     return {
@@ -89,6 +91,19 @@ def test_list_endpoint_feeds_the_map(client):
     rows = client.get("/api/generations").json()
     assert len(rows) == 2
     assert {"id", "lat", "lng", "placement", "mesh_url", "confidence_state"} <= set(rows[0])
+
+
+def test_list_rebases_stale_local_asset_urls(client):
+    payload = _payload()
+    payload["source_photo"] = "http://localhost:8000/assets/samples/source.jpg"
+    payload["artifact"] = "http://localhost:8000/assets/samples/redesign.png"
+    payload["mesh_url"] = "http://localhost:8000/assets/samples/building.glb"
+    client.post("/api/generations", json=payload)
+
+    row = client.get("/api/generations").json()[0]
+    assert row["source_photo"] == f"{gen_config.PUBLIC_BASE_URL}/assets/samples/source.jpg"
+    assert row["artifact"] == f"{gen_config.PUBLIC_BASE_URL}/assets/samples/redesign.png"
+    assert row["mesh_url"] == f"{gen_config.PUBLIC_BASE_URL}/assets/samples/building.glb"
 
 
 # --- removing buildings ---
