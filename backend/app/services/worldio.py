@@ -65,10 +65,19 @@ def to_relative(url: str | None) -> str | None:
 
 
 def to_absolute(url: str | None, base: str | None = None) -> str | None:
-    """`/outputs/x` -> `http://this-server/outputs/x`. Absolute URLs pass through."""
-    if not url or not url.startswith("/"):
+    """Point a local artifact URL at this server; leave external URLs alone.
+
+    Rows can outlive the host that first seeded them. In particular, a local
+    SQLite database may still contain ``http://localhost:8000/assets/...``
+    after the frontend moves to Vercel. Treat absolute URLs under our two
+    static roots as portable paths and rebase them just like relative URLs.
+    """
+    if not url:
         return url
-    return f"{(base or gen_config.PUBLIC_BASE_URL).rstrip('/')}{url}"
+    relative = to_relative(url)
+    if not relative or not relative.startswith(("/outputs/", "/assets/")):
+        return url
+    return f"{(base or gen_config.PUBLIC_BASE_URL).rstrip('/')}{relative}"
 
 
 def _rewrite(row: Generation, fn) -> Generation:

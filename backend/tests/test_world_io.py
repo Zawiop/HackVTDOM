@@ -37,6 +37,21 @@ def _payload(address="Burruss Hall", world_state="scorched", confidence="auto-hi
     }
 
 
+def test_absolute_local_artifact_is_rebased_onto_the_current_server():
+    assert worldio.to_absolute(
+        "http://localhost:8000/assets/samples/hitt_flooded.glb",
+        "https://deployed.example",
+    ) == "https://deployed.example/assets/samples/hitt_flooded.glb"
+    assert worldio.to_absolute(
+        "http://old-host.test/outputs/meshes/building.glb",
+        "https://deployed.example",
+    ) == "https://deployed.example/outputs/meshes/building.glb"
+    assert worldio.to_absolute(
+        "https://external.example/model.glb",
+        "https://deployed.example",
+    ) == "https://external.example/model.glb"
+
+
 def _row(**over) -> Generation:
     base = {
         "id": "11111111-1111-1111-1111-111111111111",
