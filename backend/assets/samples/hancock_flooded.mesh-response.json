@@ -5,9 +5,10 @@
   "convention": "glTF +Y up; facade faces +Z; meters; origin at base-center (y=0 is ground)",
   "extentsMeters": {
    "width": 98.63,
-   "height": 53.08,
-   "depth": 72.24
+   "depth": 77.27,
+   "height": 63.58
   }
  },
- "meshUrl": "http://localhost:8000/outputs/meshes/3510c72f1ea2cd0c8b894eec.glb"
+ "meshUrl": "http://localhost:8000/outputs/meshes/3510c72f1ea2cd0c8b894eec.glb",
+ "note": "Refit 2026-09-20: this hall's own generated mesh was unusable (blank texture atlas, or UVs sampling the atlas padding) and rendered as a featureless block on the map. burruss_flooded.glb was uniformly scaled and normalized onto this hall's footprint instead \u2014 the same technique the rest of this set uses."
 }

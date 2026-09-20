@@ -10,5 +10,5 @@
   }
  },
  "meshUrl": "http://localhost:8000/outputs/meshes/15c1407bb4bcb8354156fdcc.glb",
- "note": "Refit 2026-09-20: this hall's own generated mesh had a blank texture atlas and rendered as a featureless box, so norris_flooded.glb was uniformly scaled and normalized onto this hall's footprint instead \u2014 the same technique the rest of this set uses."
+ "note": "Refit 2026-09-20: this hall's own generated mesh was unusable (blank texture atlas, or UVs sampling the atlas padding) and rendered as a featureless block on the map. norris_flooded.glb was uniformly scaled and normalized onto this hall's footprint instead \u2014 the same technique the rest of this set uses."
 }
