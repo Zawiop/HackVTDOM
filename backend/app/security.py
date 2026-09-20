@@ -15,14 +15,21 @@ from fastapi import Header, HTTPException
 from .config import get_settings
 
 
-async def require_admin(x_admin_token: str = Header(default="")) -> None:
+def check_admin_token(token: str) -> None:
     """No-op when ADMIN_TOKEN is unset (local dev); enforced once it is.
 
     Constant-time comparison so response timing can't be used to guess the
-    token a character at a time.
+    token a character at a time. Exposed separately from `require_admin` so a
+    route that is only *conditionally* destructive — `/api/world/import` and
+    `/api/world/seed` are safe in `mode=merge`, as destructive as a full reset
+    in `mode=replace` — can check it inline instead of gating the whole route.
     """
     settings = get_settings()
     if not settings.admin_token:
         return
-    if not hmac.compare_digest(x_admin_token, settings.admin_token):
+    if not hmac.compare_digest(token, settings.admin_token):
         raise HTTPException(status_code=401, detail="missing or incorrect X-Admin-Token header")
+
+
+async def require_admin(x_admin_token: str = Header(default="")) -> None:
+    check_admin_token(x_admin_token)

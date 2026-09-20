@@ -3,7 +3,7 @@ import ConfidenceBadge from "./ConfidenceBadge";
 import { deleteAddress, deleteGeneration, getHistory, hasAdminAccess } from "../api/client";
 import HistoryTimeline from "./HistoryTimeline";
 import CorrectionControls from "../correction/CorrectionControls";
-import type { Generation, PlacementOverrides } from "../types/contract";
+import type { Generation, PlacementOverrides, PlacementRecord } from "../types/contract";
 
 /** An image that degrades to a labelled placeholder instead of a broken icon. */
 function Thumb({ src, caption }: { src?: string | null; caption: string }) {
@@ -41,6 +41,8 @@ export default function BuildingPanel({
   isPinned,
   onTogglePin,
   onRemoved,
+  onCorrectionToggle,
+  draggedPosition,
 }: {
   row: Generation;
   onClose: () => void;
@@ -53,6 +55,9 @@ export default function BuildingPanel({
   onTogglePin?: (row: Generation) => void;
   /** Called after rows are removed so the map can drop them. */
   onRemoved?: () => void;
+  /** Tells the map whether dragging should move the building or pan. */
+  onCorrectionToggle?: (open: boolean) => void;
+  draggedPosition?: PlacementRecord["position"] | null;
 }) {
   const [history, setHistory] = useState<Generation[] | null>(null);
   const [historyError, setHistoryError] = useState<Error | null>(null);
@@ -100,6 +105,13 @@ export default function BuildingPanel({
     setConfirming(null);
     setRemoveError(null);
   }, [row.id, row.confidence_state]);
+
+  // Dragging only moves a building while its correction controls are open;
+  // the rest of the time a drag on the map has to pan, as it always did.
+  useEffect(() => {
+    onCorrectionToggle?.(showCorrection);
+    return () => onCorrectionToggle?.(false);
+  }, [showCorrection, onCorrectionToggle]);
 
   const p = row.placement ?? {};
   const bestIou = (p.scoredRotationCandidates ?? [])
@@ -149,7 +161,12 @@ export default function BuildingPanel({
         </button>
       </div>
       {showCorrection && (
-        <CorrectionControls row={row} onPreview={onPreview} onSaved={onSaved} />
+        <CorrectionControls
+          row={row}
+          onPreview={onPreview}
+          onSaved={onSaved}
+          draggedPosition={draggedPosition}
+        />
       )}
 
       <h3>history — this address</h3>

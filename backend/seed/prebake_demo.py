@@ -66,15 +66,15 @@ DEMOS = [
     },
     # The neighbourhood, all in the same World State so step 10's Propagate has something
     # real to reveal at each radius: Norris/Pamplin/Hancock inside 100 m, the rest inside
-    # 250 m. Burruss's photo is reused deliberately — a neighbour has no photography of its
-    # own until the Mapillary path lands — but every mesh is fitted to *that building's*
-    # own OSM footprint, so the placement each one gets is genuinely its own.
+    # 250 m. Each one's image is its own real Mapillary photo (captured by a --live run
+    # of this script), and its mesh is fitted to *that building's* own OSM footprint — six
+    # distinct buildings, not one photo standing in for all of them.
     {
         "address": "Hitt Hall, Blacksburg, VA",
         "lat": 37.22945,
         "lng": -80.42606,
         "world_state": "flooded",
-        "image": SAMPLES / "burruss_flooded.png",
+        "image": SAMPLES / "hitt_flooded.png",
         "mesh": SAMPLES / "hitt_flooded.glb",
         "mesh_response": SAMPLES / "hitt_flooded.mesh-response.json",
     },
@@ -83,7 +83,7 @@ DEMOS = [
         "lat": 37.22974,
         "lng": -80.42315,
         "world_state": "flooded",
-        "image": SAMPLES / "burruss_flooded.png",
+        "image": SAMPLES / "norris_flooded.png",
         "mesh": SAMPLES / "norris_flooded.glb",
         "mesh_response": SAMPLES / "norris_flooded.mesh-response.json",
     },
@@ -92,7 +92,7 @@ DEMOS = [
         "lat": 37.22866,
         "lng": -80.42467,
         "world_state": "flooded",
-        "image": SAMPLES / "burruss_flooded.png",
+        "image": SAMPLES / "pamplin_flooded.png",
         "mesh": SAMPLES / "pamplin_flooded.glb",
         "mesh_response": SAMPLES / "pamplin_flooded.mesh-response.json",
     },
@@ -101,7 +101,7 @@ DEMOS = [
         "lat": 37.23026,
         "lng": -80.42426,
         "world_state": "flooded",
-        "image": SAMPLES / "burruss_flooded.png",
+        "image": SAMPLES / "hancock_flooded.png",
         "mesh": SAMPLES / "hancock_flooded.glb",
         "mesh_response": SAMPLES / "hancock_flooded.mesh-response.json",
     },
@@ -110,7 +110,7 @@ DEMOS = [
         "lat": 37.22907,
         "lng": -80.4256,
         "world_state": "flooded",
-        "image": SAMPLES / "burruss_flooded.png",
+        "image": SAMPLES / "derring_flooded.png",
         "mesh": SAMPLES / "derring_flooded.glb",
         "mesh_response": SAMPLES / "derring_flooded.mesh-response.json",
     },
@@ -119,7 +119,7 @@ DEMOS = [
         "lat": 37.23019,
         "lng": -80.42238,
         "world_state": "flooded",
-        "image": SAMPLES / "burruss_flooded.png",
+        "image": SAMPLES / "holden_flooded.png",
         "mesh": SAMPLES / "holden_flooded.glb",
         "mesh_response": SAMPLES / "holden_flooded.mesh-response.json",
     },

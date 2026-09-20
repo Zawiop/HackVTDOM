@@ -128,6 +128,27 @@ interface LayerOpts {
   selectedId?: string | null;
   /** Live, unsaved correction values applied to the selected row only. */
   overrides?: PlacementOverrides | null;
+  /**
+   * 0..1 — how much of the transformed world is showing. 1 is the World State
+   * in full; 0 leaves the real basemap bare underneath. Drives the before/after
+   * reveal, which is the pitch's own beat: here is your street, here it is
+   * after.
+   */
+  reveal?: number;
+}
+
+/**
+ * Clamp to 0..1. Anything unset or unreadable means "fully revealed".
+ *
+ * The null case has to be explicit: `Number(null)` is 0, so falling through to
+ * the numeric path would turn an absent value into a hidden world — a link
+ * with no `rv` parameter would open on an empty map and read as a broken app.
+ */
+export function clampReveal(value: number | null | undefined): number {
+  if (value == null) return 1;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(1, Math.max(0, n));
 }
 
 function applyOverrides(
@@ -147,6 +168,8 @@ export function buildScenegraphLayers(rows: Generation[], opts: LayerOpts = {}) 
     selectedId = null,
     overrides = null,
   } = opts;
+  const reveal = clampReveal(opts.reveal ?? 1);
+  if (reveal <= 0) return [];
 
   return [...groupByMesh(rows, fallbackMesh)].map(([url, group]) => {
     const data = group.map((r) => applyOverrides(r, selectedId, overrides));
@@ -160,7 +183,11 @@ export function buildScenegraphLayers(rows: Generation[], opts: LayerOpts = {}) 
       getScale: scaleFor,
       sizeScale: 1,
       _lighting: "pbr",
-      pickable: true,
+      opacity: reveal,
+      // A half-faded building should not swallow clicks meant for the map
+      // underneath it — during a reveal the real ground is what is being
+      // looked at.
+      pickable: reveal > 0.35,
       onClick: (info) => {
         if (info.object) onClick?.(info.object);
       },
@@ -180,13 +207,19 @@ export function buildScenegraphLayers(rows: Generation[], opts: LayerOpts = {}) 
  */
 export function buildConfidenceRingLayer(rows: Generation[], opts: LayerOpts = {}) {
   const { onClick, selectedId = null, overrides = null } = opts;
-  const flagged = rows
-    .filter((r) => r.confidence_state === "auto-low")
-    .map((r) => applyOverrides(r, selectedId, overrides));
+  // The ring flags a *building's* placement, so it goes with the building
+  // during a reveal. Left on its own over the bare basemap it marks nothing.
+  const reveal = clampReveal(opts.reveal ?? 1);
+  const flagged = reveal <= 0
+    ? []
+    : rows
+        .filter((r) => r.confidence_state === "auto-low")
+        .map((r) => applyOverrides(r, selectedId, overrides));
 
   return new ScatterplotLayer<Generation>({
     id: "low-confidence-rings",
     data: flagged,
+    opacity: reveal,
     getPosition: positionFor,
     stroked: true,
     filled: false,
@@ -218,7 +251,7 @@ export function buildConfidenceRingLayer(rows: Generation[], opts: LayerOpts = {
  * World State only exists in the mesh texture — the map says nothing about the
  * place, which is the opposite of the pitch.
  */
-export function buildTerrainLayers(rows: Generation[]) {
+export function buildTerrainLayers(rows: Generation[], reveal = 1) {
   // Each patch is blended against the others so differing states wash together
   // instead of meeting at a seam.
   const cells: TerrainCell[] = rows.flatMap((row) =>
@@ -228,10 +261,13 @@ export function buildTerrainLayers(rows: Generation[]) {
     ),
   );
   const features: TerrainFeature[] = rows.flatMap(terrainFeatures);
+  const shown = clampReveal(reveal);
+  if (shown <= 0) return [];
 
   return [
     new PolygonLayer<TerrainCell>({
       id: "world-state-ground",
+      opacity: shown,
       data: cells,
       getPolygon: (d: TerrainCell) => d.polygon,
       getFillColor: (d: TerrainCell) => d.color,
@@ -248,6 +284,7 @@ export function buildTerrainLayers(rows: Generation[]) {
     // littered rather than bare; up close the real geometry dominates them.
     new ScatterplotLayer<TerrainFeature>({
       id: "world-state-feature-dots",
+      opacity: shown,
       data: features,
       getPosition: (d: TerrainFeature) => [d.position[0], d.position[1]],
       getRadius: (d: TerrainFeature) => d.radius * 0.85,
@@ -260,6 +297,7 @@ export function buildTerrainLayers(rows: Generation[]) {
     }),
     new PolygonLayer<TerrainFeature>({
       id: "world-state-features",
+      opacity: shown,
       data: features,
       getPolygon: featurePolygon,
       getFillColor: (d: TerrainFeature) => d.color,
@@ -283,11 +321,14 @@ export function buildTerrainLayers(rows: Generation[]) {
  * footprint rectangle, rotated to the building's yaw, as two stacked polygons —
  * a wide faint one for falloff and a tighter darker one for contact.
  */
-export function buildGroundShadowLayers(rows: Generation[]) {
+export function buildGroundShadowLayers(rows: Generation[], reveal = 1) {
+  const shown = clampReveal(reveal);
+  if (shown <= 0) return [];
   const shadow = (id: string, inflate: number, color: [number, number, number, number]) =>
     new PolygonLayer<Generation>({
       id,
       data: rows,
+      opacity: shown,
       getPolygon: (d: Generation) => footprintCorners(d, inflate),
       getFillColor: color,
       stroked: false,
@@ -364,4 +405,71 @@ export function buildLabelLayer(rows: Generation[]) {
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
     pickable: false,
   });
+}
+
+/**
+ * A placeholder block where a building is being generated right now.
+ *
+ * Generation runs 30–90 seconds through two model calls, and until this the
+ * only sign of it was a line of text in the side panel. On the map — which is
+ * where everyone is looking — nothing happened at all, so a slow success and
+ * a silent failure were indistinguishable for a minute and a half. This puts
+ * the building's real footprint down immediately, at its real size, so the
+ * wait happens in the place the result will appear.
+ */
+export interface GhostBuilding {
+  lat: number;
+  lng: number;
+  widthMeters?: number | null;
+  depthMeters?: number | null;
+  rotationDegrees?: number | null;
+  /** Roughly how tall to draw the block, in metres. */
+  heightMeters?: number | null;
+}
+
+export function buildGhostLayers(ghost: GhostBuilding | null | undefined) {
+  if (!ghost) return [];
+  // Reuse footprintCorners by handing it a row-shaped object: the ghost is
+  // meant to sit exactly where the finished building will.
+  const asRow = {
+    lat: ghost.lat,
+    lng: ghost.lng,
+    placement: {
+      position: [ghost.lat, ghost.lng, 0],
+      rotationDegrees: ghost.rotationDegrees ?? 0,
+      footprintWidthMeters: ghost.widthMeters ?? undefined,
+      footprintDepthMeters: ghost.depthMeters ?? undefined,
+    },
+  } as unknown as Generation;
+
+  const height = Math.max(6, Number(ghost.heightMeters) || 18);
+  return [
+    new PolygonLayer<Generation>({
+      id: "ghost-building",
+      data: [asRow],
+      getPolygon: (d: Generation) => footprintCorners(d, 1),
+      getFillColor: [201, 138, 60, 44],
+      getLineColor: [201, 138, 60, 200],
+      getElevation: height,
+      extruded: true,
+      filled: true,
+      stroked: true,
+      wireframe: true,
+      lineWidthUnits: "pixels",
+      getLineWidth: 1.5,
+      lineWidthMinPixels: 1.5,
+      material: { ambient: 0.9, diffuse: 0.2, shininess: 1, specularColor: [0, 0, 0] },
+      pickable: false,
+    }),
+    new PolygonLayer<Generation>({
+      id: "ghost-building-base",
+      data: [asRow],
+      getPolygon: (d: Generation) => footprintCorners(d, 1.06),
+      getFillColor: [201, 138, 60, 26],
+      stroked: false,
+      filled: true,
+      extruded: false,
+      pickable: false,
+    }),
+  ];
 }

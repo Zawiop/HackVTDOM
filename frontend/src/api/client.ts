@@ -275,11 +275,91 @@ export function deleteAddress(address: string, signal?: AbortSignal) {
   );
 }
 
-/** Step 11 — empty the world. Every building, every state. Cannot be undone. */
+/** Step 11 — empty the world. Every building, every state. Stashed first,
+ *  so `undoable` tells the caller whether POST /api/world/undo can restore it. */
 export function resetWorld(signal?: AbortSignal) {
-  return request<{ removed: number }>("/api/world?confirm=yes", {
+  return request<{ removed: number; undoable: boolean }>("/api/world?confirm=yes", {
     method: "DELETE",
     headers: adminHeaders,
     signal,
   });
+}
+
+// --- World I/O: export, import, seed, undo -------------------------------
+//
+// The reason these exist: a row points at its mesh and images by URL, and
+// those files live in backend/outputs/, which is gitignored and ~350 MB. The
+// database alone does not travel. A bundle carries both halves.
+
+export interface UndoInfo {
+  available: boolean;
+  action?: string;
+  label?: string;
+  stashed_at?: string;
+  count?: number;
+}
+
+export interface ImportResult {
+  mode: "merge" | "replace";
+  in_bundle?: number;
+  available?: number;
+  imported: number;
+  skipped_already_present: number;
+  cleared: number;
+  undoable: boolean;
+  files_written?: number;
+  files_already_present?: number;
+  files_rejected?: number;
+}
+
+/**
+ * The download URL for the world bundle.
+ *
+ * Deliberately a URL rather than a fetch: the response is a zip that can run
+ * to hundreds of megabytes, and letting the browser stream it straight to disk
+ * beats pulling it through JS into a blob first.
+ */
+export function worldExportUrl(format: "bundle" | "json" = "bundle") {
+  return `${BASE_URL}/api/world/export${format === "json" ? "?format=json" : ""}`;
+}
+
+/** Read a bundle back in. `replace` clears the world first (and is undoable). */
+export function importWorld(
+  file: File,
+  mode: "merge" | "replace" = "merge",
+  signal?: AbortSignal,
+) {
+  const form = new FormData();
+  form.append("bundle", file);
+  return request<ImportResult>(`/api/world/import?mode=${mode}`, {
+    method: "POST",
+    body: form,
+    // adminHeaders only ever holds X-Admin-Token, so this still lets the
+    // browser set the multipart boundary itself. mode=replace is as
+    // destructive as DELETE /world and the backend checks the same token.
+    headers: adminHeaders,
+    signal,
+  });
+}
+
+/** Fill the world from the demo buildings committed to the repo. No network, no GPU. */
+export function seedWorld(mode: "merge" | "replace" = "merge", signal?: AbortSignal) {
+  return request<ImportResult>(`/api/world/seed?mode=${mode}`, {
+    method: "POST",
+    headers: adminHeaders,
+    signal,
+  });
+}
+
+/** What undo would restore, without restoring it. Never throws on "nothing there". */
+export function peekUndo(signal?: AbortSignal) {
+  return request<UndoInfo>("/api/world/undo", { signal });
+}
+
+/** Put the last removed batch back, verbatim. 404 when there is nothing stashed. */
+export function undoLast(signal?: AbortSignal) {
+  return request<{ restored: number; in_batch: number; action?: string; label?: string }>(
+    "/api/world/undo",
+    { method: "POST", signal },
+  );
 }

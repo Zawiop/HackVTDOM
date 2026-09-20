@@ -10,9 +10,14 @@ import type {
 /**
  * Step 09: manual correction for a flagged placement.
  *
- * Deliberately buttons/slider/arrow-keys rather than freeform 3D dragging —
- * 09-correction-ui.md calls dragging out by name as a time sink. Every control
- * binds to a transform field that already exists, so nothing is recomputed.
+ * Buttons, a slider and arrow keys, because 09-correction-ui.md calls freeform
+ * 3D dragging out by name as a time sink. Every control binds to a transform
+ * field that already exists, so nothing is recomputed.
+ *
+ * Dragging the building on the map was added later and feeds `draggedPosition`
+ * here — as a way to set the *position* field these controls already own, not
+ * as the freeform gizmo the spec warned about. Rotation and scale stay on the
+ * scored candidates and the slider, which is where the real information is.
  *
  * Edits preview live on the map via `onPreview`; only Save writes to the
  * backend, which flips the row to `manually-verified`.
@@ -26,10 +31,13 @@ export default function CorrectionControls({
   row,
   onPreview,
   onSaved,
+  draggedPosition,
 }: {
   row: Generation;
   onPreview?: (o: PlacementOverrides | null) => void;
   onSaved?: (updated: Generation) => void;
+  /** Set by dragging the building on the map. Save still has to be pressed. */
+  draggedPosition?: Position | null;
 }) {
   const savedRotation = row.placement?.rotationDegrees ?? 0;
   const savedScale = row.placement?.scale ?? 1;
@@ -50,6 +58,13 @@ export default function CorrectionControls({
     setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [row.id]);
+
+  // A drag on the map writes straight into the position field, so the two
+  // ways of moving a building cannot disagree about where it is.
+  useEffect(() => {
+    if (!draggedPosition) return;
+    setPosition((prev) => [draggedPosition[0], draggedPosition[1], prev[2] ?? 0]);
+  }, [draggedPosition]);
 
   // Preview live, without touching the database.
   useEffect(() => {
@@ -146,8 +161,8 @@ export default function CorrectionControls({
 
       <h3>position</h3>
       <p className="hint">
-        Click here, then arrow keys to nudge {NUDGE_M}m — hold shift for{" "}
-        {NUDGE_SHIFT_M}m.
+        Drag the building on the map, or click here and use the arrow keys to
+        nudge {NUDGE_M}m — hold shift for {NUDGE_SHIFT_M}m.
       </p>
       <div className="mono-sm">
         {Number(position[0]).toFixed(6)}, {Number(position[1]).toFixed(6)}

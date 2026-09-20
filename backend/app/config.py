@@ -67,6 +67,13 @@ class Settings(BaseSettings):
     store_override: Optional[str] = Field(
         default=None, validation_alias=AliasChoices("SN_STORE")
     )
+    # Where a destructive delete parks its rows so undo can put them back.
+    # Defaults beside the SQLite file, which means the test suite's temp
+    # SN_SQLITE_PATH carries the trash off with it and no test can undo into
+    # a real world.
+    trash_path: Optional[Path] = Field(
+        default=None, validation_alias=AliasChoices("SN_TRASH_PATH")
+    )
 
     cors_origins: List[str] = [
         "http://localhost:5173",
@@ -74,6 +81,10 @@ class Settings(BaseSettings):
         "http://localhost:4173",
         "http://127.0.0.1:4173",
     ]
+
+    @property
+    def resolved_trash_path(self) -> Path:
+        return self.trash_path or (self.sqlite_path.parent / "trash.json")
 
     @property
     def supabase_configured(self) -> bool:
