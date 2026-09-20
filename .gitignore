@@ -64,3 +64,5 @@ backend/placement-preview.html
 
 # Runtime undo stash (written by the app, not source)
 backend/trash.json
+.vercel
+.env*

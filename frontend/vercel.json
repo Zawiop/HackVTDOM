@@ -7,15 +7,15 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://backgrounds-polls-broadcasting-november.trycloudflare.com/api/:path*"
+      "destination": "https://roses-explicit-painted-hudson.trycloudflare.com/api/:path*"
     },
     {
       "source": "/outputs/:path*",
-      "destination": "https://backgrounds-polls-broadcasting-november.trycloudflare.com/outputs/:path*"
+      "destination": "https://roses-explicit-painted-hudson.trycloudflare.com/outputs/:path*"
     },
     {
       "source": "/assets/samples/:path*",
-      "destination": "https://backgrounds-polls-broadcasting-november.trycloudflare.com/assets/samples/:path*"
+      "destination": "https://roses-explicit-painted-hudson.trycloudflare.com/assets/samples/:path*"
     },
     { "source": "/((?!api|outputs|assets|\\.well-known).*)", "destination": "/index.html" }
   ]
