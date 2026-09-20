@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError, generateImage, getWorldStates } from "../api/client";
 import type { SideView } from "../api/client";
 import MapillarySuggestions from "../photo/MapillarySuggestions";
+import { spectrumIndex, swatchFor } from "./palette";
 import type {
   GenerateImageResult,
   WorldState,
@@ -149,29 +150,40 @@ export default function WorldStatePanel({
   return (
     <>
       <h3>world state</h3>
-      <p className="hint ws-spectrum-label">
+      <p className="ws-spectrum-label">
         <span>present</span>
+        <span className="ws-spectrum-rule" aria-hidden="true" />
         <span>collapsed</span>
       </p>
 
-      <div className="ws-spectrum">
-        {options.map((option) => (
-          <button
-            key={option.id}
-            type="button"
-            title={option.blurb}
-            className={chosen === option.id && !usingOverride ? "active" : ""}
-            onClick={() => setChosen(option.id)}
-            disabled={busy}
-          >
-            {option.label.toLowerCase()}
-          </button>
-        ))}
+      {/* One per row rather than five across a 292 px panel: at that width the
+          labels broke mid-word ("reclaim / ed"), and shrinking the type enough
+          to fit "petrified" made the whole control unreadable. Down the page
+          each name gets a line of its own, and the swatch shows the colour the
+          ground will actually turn. */}
+      <div className="ws-spectrum" role="radiogroup" aria-label="World State">
+        {[...options]
+          .sort((a, b) => spectrumIndex(a.id) - spectrumIndex(b.id))
+          .map((option) => {
+            const selected = chosen === option.id && !usingOverride;
+            const { gradient } = swatchFor(option.id);
+            return (
+              <button
+                key={option.id}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                className={`ws-option${selected ? " active" : ""}`}
+                onClick={() => setChosen(option.id)}
+                disabled={busy}
+              >
+                <span className="ws-swatch" style={{ background: gradient }} aria-hidden="true" />
+                <span className="ws-name">{option.label}</span>
+                <span className="ws-blurb">{option.blurb}</span>
+              </button>
+            );
+          })}
       </div>
-
-      {chosen && !usingOverride && (
-        <p className="hint">{options.find((o) => o.id === chosen)?.blurb}</p>
-      )}
 
       <label className="ws-field">
         <span className="hint">or describe it yourself</span>

@@ -219,31 +219,100 @@ input[type="range"] { flex: 1; accent-color: var(--sn-accent); padding: 0; }
 
 .maplibregl-ctrl-attrib { font-size: 10px; }
 
-/* --- Step 04: World State spectrum --- */
+/* --- Step 04: World State spectrum ---------------------------------------
+   Five options down the page, not across it. Across a 292 px panel each one
+   got ~52 px, which broke the labels mid-word — "reclaim / ed", "petrifi /
+   ed" — and the type size that would have fitted "petrified" on one line was
+   too small to read. A row each also buys room for the blurb, which was
+   previously only a title attribute nobody hovers during a demo. */
 
 .ws-spectrum-label {
   display: flex;
-  justify-content: space-between;
-  margin: 0 0 4px;
-  font-size: 10px;
-  letter-spacing: 0.06em;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 7px;
+  font-size: 9px;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
+  color: var(--sn-muted);
 }
 
-/* One row, ordered present -> collapsed, so it reads as a spectrum rather
-   than a grid of filters. */
-.ws-spectrum {
+/* The axis itself: present at one end, collapsed at the other. */
+.ws-spectrum-rule {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(84, 118, 56, 0.85),
+    rgba(38, 96, 100, 0.85),
+    rgba(186, 134, 74, 0.85),
+    rgba(202, 178, 134, 0.85),
+    rgba(146, 144, 140, 0.85)
+  );
+}
+
+.ws-spectrum { display: grid; gap: 3px; }
+
+.panel .ws-option {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 3px;
+  grid-template-columns: 10px 1fr;
+  grid-template-areas: "swatch name";
+  align-items: center;
+  gap: 0 9px;
+  width: 100%;
+  padding: 6px 9px;
+  text-align: left;
+  background: transparent;
+  border: 1px solid var(--sn-border);
+  border-radius: 5px;
+  font-family: var(--sn-body);
+  font-size: 12px;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.panel .ws-option:hover:not(:disabled) {
+  background: #1d241f;
+  border-color: color-mix(in srgb, var(--sn-accent) 45%, var(--sn-border));
+}
+.panel .ws-option.active {
+  border-color: var(--sn-accent);
+  background: color-mix(in srgb, var(--sn-accent) 11%, transparent);
 }
 
-.ws-spectrum button {
-  padding: 5px 2px;
-  font-size: 10px;
-  text-overflow: ellipsis;
-  overflow: hidden;
+/* The colour the ground will actually turn — taken from the map's own
+   terrain profiles, so the two can never drift apart. */
+.ws-swatch {
+  grid-area: swatch;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
+
+.ws-name {
+  grid-area: name;
+  /* The whole point: never break a label across two lines. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.02em;
+}
+.panel .ws-option.active .ws-name { color: var(--sn-accent); }
+
+/* Only the chosen state explains itself — five blurbs at once is a wall. */
+.ws-blurb {
+  grid-area: blurb;
+  display: none;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--sn-muted);
+}
+.panel .ws-option.active {
+  grid-template-areas:
+    "swatch name"
+    ".      blurb";
+  row-gap: 3px;
+}
+.panel .ws-option.active .ws-blurb { display: block; }
 
 .ws-field {
   display: block;
@@ -651,10 +720,11 @@ input[type="range"] { flex: 1; accent-color: var(--sn-accent); padding: 0; }
     justify-content: center;
     border-radius: 8px;
   }
-  /* Too narrow for the gap between the panels: drop it below the left panel
-     rather than squeezing it into a column of single words. */
+  /* Still clear of the left panel. Letting it span the full width here put it
+     straight across the app's own title, which is the one piece of chrome that
+     should never be covered. */
   .undo-banner {
-    left: 16px;
+    left: 292px;
     right: 16px;
     max-width: none;
     width: auto;

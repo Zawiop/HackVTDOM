@@ -5,9 +5,10 @@
   "convention": "glTF +Y up; facade faces +Z; meters; origin at base-center (y=0 is ground)",
   "extentsMeters": {
    "width": 69.29,
-   "height": 51.95,
-   "depth": 33.76
+   "depth": 42.48,
+   "height": 36.83
   }
  },
- "meshUrl": "http://localhost:8000/outputs/meshes/15c1407bb4bcb8354156fdcc.glb"
+ "meshUrl": "http://localhost:8000/outputs/meshes/15c1407bb4bcb8354156fdcc.glb",
+ "note": "Refit 2026-09-20: this hall's own generated mesh had a blank texture atlas and rendered as a featureless box, so norris_flooded.glb was uniformly scaled and normalized onto this hall's footprint instead \u2014 the same technique the rest of this set uses."
 }

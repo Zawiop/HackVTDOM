@@ -330,12 +330,8 @@
    "artifact": "/assets/samples/derring_flooded.png",
    "placement": {
     "rotationDegrees": 45.87,
-    "scale": 0.6849,
-    "scaleXYZ": [
-     0.9999,
-     1.0,
-     0.6849
-    ],
+    "scale": 1.0,
+    "scaleXYZ": null,
     "position": [
      37.2290725,
      -80.4255998,
@@ -387,11 +383,7 @@
    "placement": {
     "rotationDegrees": 48.49,
     "scale": 1.0,
-    "scaleXYZ": [
-     1.0,
-     1.0,
-     1.8322
-    ],
+    "scaleXYZ": null,
     "position": [
      37.2301896,
      -80.4223804,
