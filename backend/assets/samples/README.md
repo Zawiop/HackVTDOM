@@ -26,6 +26,17 @@ Two of the eight are genuinely `auto-low`, not planted: **Pamplin** is near-squa
 orientations score equally and step 08 correctly refuses to guess; **Holden**'s mesh only reaches
 63% of its achievable IoU fit. Both are exactly what step 09's correction UI exists to fix.
 
+### Two of these were refit (2026-09-20)
+
+`holden_flooded.glb` and `derring_flooded.glb` came out of the generator as near-boxes with
+**blank texture atlases** — flat white panels where the others carry windows and cornices — so
+they rendered as featureless grey slabs on the map. Both were replaced by `norris_flooded.glb`
+uniformly scaled and normalized onto their own hall's footprint, which is the same technique
+that produced most of this set in the first place (one generated building, refit to each hall's
+real OSM outline). Their `.mesh-response.json` carries a `note` saying so, and the two rows in
+`backend/assets/seed-world.json` dropped the per-axis `scaleXYZ` that step 08 had computed to
+compensate for the old meshes' proportions.
+
 ## Mesh convention (every mesh the backend returns)
 
 - glTF 2.0 axes: **+Y up**, the **photographed facade faces +Z**, +X is the viewer's right when
