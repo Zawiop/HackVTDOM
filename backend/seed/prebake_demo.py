@@ -61,6 +61,19 @@ DEMOS = [
         "mesh": SAMPLES / "burruss_flooded.glb",
         "mesh_response": SAMPLES / "burruss_flooded.mesh-response.json",
     },
+    # A neighbour in the same World State, so step 10's Propagate has something real to
+    # reveal (nothing shares a state otherwise, and it reports 0 honestly). Burruss's photo
+    # is reused deliberately: a neighbour has no photography of its own until the Mapillary
+    # path lands, and the mesh here is fitted to *Hitt Hall's* own footprint.
+    {
+        "address": "Hitt Hall, Blacksburg, VA",
+        "lat": 37.22945,
+        "lng": -80.42606,
+        "world_state": "flooded",
+        "image": SAMPLES / "burruss_flooded.png",
+        "mesh": SAMPLES / "hitt_flooded.glb",
+        "mesh_response": SAMPLES / "hitt_flooded.mesh-response.json",
+    },
 ]
 
 

@@ -16,6 +16,31 @@ import type { Generation, PlacementOverrides } from "../types/contract";
  * grouped by `mesh_url` and one ScenegraphLayer is built per distinct mesh.
  */
 
+/**
+ * One mesh per address: the newest generation, or whichever one is selected.
+ *
+ * Step 11 keeps one row per generation, so an address that has been through two World
+ * States has two rows at the *same* coordinate — rendering both stacks the meshes into
+ * each other. The other states are not lost: the click panel's history timeline lists
+ * them, and picking one selects it, which brings it to the front here.
+ */
+export function visibleRows(
+  rows: Generation[],
+  selectedId?: string | null,
+): Generation[] {
+  const newest = new Map<string, Generation>();
+  for (const row of rows) {
+    const key = row.address || row.id;
+    const current = newest.get(key);
+    if (!current || row.id === selectedId) {
+      newest.set(key, row);
+    } else if (current.id !== selectedId && (row.created_at ?? "") > (current.created_at ?? "")) {
+      newest.set(key, row);
+    }
+  }
+  return [...newest.values()];
+}
+
 /** [pitch, yaw, roll]. roll=90 lifts a Y-up glTF onto deck.gl's Z-up ground. */
 export const UP_AXIS_ROLL = 90;
 

@@ -603,6 +603,38 @@ Two things worth knowing if you touch this:
 Needs `requirements-local-mesh.txt` (torch + transformers, OWLv2 ~600 MB on first use). Without
 it every building just gets the default front-center entrance.
 
+## Polish pass 2026-09-19 (full live run, end to end)
+
+Ran `seed/prebake_demo.py --live --reset` and drove the whole app in a browser. Three things
+were broken or missing; all three are fixed, and every suite passes afterwards (150 backend
+offline, 3 heavy, 14 live, 29 frontend, clean `tsc -b`).
+
+**1. The UI stopped after the image.** `App.tsx` mounted `<WorldStatePanel>` with no
+`onGenerated`, so clicking *generate* produced a redesigned image and then nothing: no mesh,
+no placement, no row, nothing on the map. The backend chain was fine — only the prebake script
+ever called it. `App.tsx` now runs mesh (06+07) → placement (08) → save (11), selects the new
+row, and reports each stage under the picker. `computePlacement` was also missing from
+`api/client.ts` (every other route had a wrapper) and is now there.
+
+**2. Two World States of one building stacked into each other.** Step 11 stores one row per
+generation, and the map rendered all of them — so Burruss scorched and Burruss flooded rendered
+at the same coordinate, interpenetrating. `layers.visibleRows()` now keeps the newest row per
+address, *or* the selected one, so picking an entry in the history timeline swaps the mesh on
+the map instead of adding to a pile.
+
+**3. Propagate had nothing to reveal.** No two rows shared a World State, so it honestly
+reported 0 at every radius. `prebake_demo.py` now bakes a third row — Hitt Hall, flooded,
+~210 m from Burruss — and Propagate reveals it at 250 m (and still honestly reports 0 at 50 m
+and 100 m, because VT buildings really are further apart than that).
+
+Also: a map click used to save the row as `map click — 37.2, -80.4`; it now uses the matched
+OSM building's name, which matters because history groups by address.
+
+Verified live in the browser: geocode → footprint → World State → generate → mesh → placement →
+save → building on the map with its glowing entrance, click panel with before/after and the
+history timeline, correction write-back flipping a row to `manually-verified`, and Propagate
+revealing the neighbour.
+
 ## Contract (build against this; Pydantic models in `models/contracts.py`, TS in `types/contract.ts`)
 
 **`POST /api/generate-image`**: `multipart/form-data`: `photo` (file), `worldStatePrompt` (text),
@@ -674,6 +706,9 @@ Files are served by the backend at `PUBLIC_BASE_URL/outputs/...` (default
 
 ## Needs a decision from the team
 
+0. **`backend/.env` lost its keys** when it was overwritten with `.env.example`. `HF_TOKEN` is
+   back; `MAPILLARY_ACCESS_TOKEN` and `GEMINI_API_KEY` are still empty, which is why step 03's
+   two live tests skip (`pytest -m live`) and Gemini reports "not set".
 1. If anyone has a Google project with image quota (paid), setting that `GEMINI_API_KEY` makes
    Gemini the live provider with no code change. Otherwise Kontext is the image path.
 2. The HF token owner could enable "Make calls to Inference Providers" on the token (free monthly

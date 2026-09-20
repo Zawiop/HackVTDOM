@@ -74,7 +74,8 @@ def _load():
             from transformers import Owlv2ForObjectDetection, Owlv2Processor
 
             device = "mps" if torch.backends.mps.is_available() else "cpu"
-            processor = Owlv2Processor.from_pretrained(DETECTOR)
+            # use_fast=True would pull in torchvision for a processor we call twice a minute.
+            processor = Owlv2Processor.from_pretrained(DETECTOR, use_fast=False)
             model = Owlv2ForObjectDetection.from_pretrained(DETECTOR).to(device).eval()
             _detector = (processor, model, device)
     return _detector
@@ -105,7 +106,11 @@ def detect_doors(image: Image.Image, alpha: np.ndarray) -> list[dict]:
     with torch.no_grad():
         out = model(**inputs)
     side = max(rgb.size)  # OWLv2 pads to a square; boxes are relative to it
-    res = processor.post_process_object_detection(
+    # transformers renamed this for OWL models; the old name warns and goes away in v5.
+    post_process = getattr(
+        processor, "post_process_grounded_object_detection", processor.post_process_object_detection
+    )
+    res = post_process(
         out, threshold=SCORE_THRESHOLD, target_sizes=torch.tensor([[side, side]]).to(device)
     )[0]
 

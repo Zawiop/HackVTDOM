@@ -16,6 +16,7 @@ import {
   buildPendingLayer,
   buildRadiusLayer,
   buildScenegraphLayers,
+  visibleRows,
 } from "./layers";
 import type { Generation, PlacementOverrides } from "../types/contract";
 
@@ -116,15 +117,18 @@ export default function MapView({
     const overlay = overlayRef.current;
     if (!overlay) return;
     const selected = rows.find((r) => r.id === selectedId) ?? null;
+    // One mesh per address (the newest, or the selected one): two World States of the
+    // same building sit at the same coordinate and would otherwise interpenetrate.
+    const shown = visibleRows(rows, selectedId);
     const layers = [
       buildRadiusLayer(
         propagate?.source ?? selected,
         propagate?.active ? propagate.radiusMeters : null,
       ),
-      ...buildScenegraphLayers(rows, { onClick: onSelect, roll, selectedId, overrides }),
-      buildConfidenceRingLayer(rows, { onClick: onSelect, selectedId, overrides }),
+      ...buildScenegraphLayers(shown, { onClick: onSelect, roll, selectedId, overrides }),
+      buildConfidenceRingLayer(shown, { onClick: onSelect, selectedId, overrides }),
       buildPendingLayer(propagate?.pending),
-      showLabels ? buildLabelLayer(rows) : null,
+      showLabels ? buildLabelLayer(shown) : null,
     ].filter(Boolean);
     overlay.setProps({ layers });
   }, [rows, selectedId, onSelect, roll, overrides, propagate, showLabels]);

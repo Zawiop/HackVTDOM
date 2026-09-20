@@ -11,8 +11,10 @@ import EntryPanel from "./entry/EntryPanel";
 import WorldStatePanel from "./worldstate/WorldStatePanel";
 import type { LocatedPlace } from "./entry/EntryPanel";
 import { offsetMeters } from "./lib/geo";
+import { computePlacement, generateMesh, saveGeneration } from "./api/client";
 import type {
   FootprintCandidate,
+  GenerateImageResult,
   Generation,
   PlacementOverrides,
 } from "./types/contract";
@@ -37,6 +39,9 @@ export default function App() {
   // The building steps 01/02 resolved, which step 04's picker generates against.
   const [located, setLocated] = useState<LocatedPlace | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
+  // Steps 06-08 + 11, after step 05 returns the image.
+  const [pipeline, setPipeline] = useState<string | null>(null);
+  const [pipelineError, setPipelineError] = useState<string | null>(null);
 
   const selected = useMemo(
     () => rows.find((r) => r.id === selectedId) ?? null,
@@ -72,6 +77,76 @@ export default function App() {
       duration: 900,
     });
   }, []);
+
+  /**
+   * Step 05 produced the image; carry it the rest of the way to the map.
+   *
+   * mesh (06+07) -> placement (08) -> persistence (11), then select the new row so the
+   * building the user just made is the one open in the panel. Each failure is reported
+   * rather than leaving a generated image stranded with nothing on the map.
+   */
+  const onImageGenerated = useCallback(
+    async (image: GenerateImageResult) => {
+      const place = located;
+      const footprint = place?.selected;
+      if (!place || !footprint) {
+        setPipelineError("locate a building first — placement needs its real footprint");
+        return;
+      }
+      setPipelineError(null);
+      try {
+        setPipeline("building the mesh…");
+        const mesh = await generateMesh(image.imageUrl, {
+          footprintWidthMeters: footprint.footprintWidthMeters,
+          footprintDepthMeters: footprint.footprintDepthMeters,
+        });
+
+        setPipeline("placing it on the footprint…");
+        const placement = await computePlacement({
+          footprint,
+          meshExtentsMeters: mesh.normalization.extentsMeters,
+          neighbors,
+          footprintConfidence: place.footprint?.confidence ?? "auto-high",
+        });
+
+        setPipeline("saving…");
+        // A map click has no geocoded address, and "map click — 37.2, -80.4" is a poor key
+        // for something history groups by: prefer the matched OSM building's own name.
+        const clicked = place.address?.startsWith("map click") ?? true;
+        const address =
+          (clicked ? footprint.tags.name : place.address) || place.address || "unknown address";
+        const saved = await saveGeneration({
+          address,
+          lat: place.lat,
+          lng: place.lng,
+          source_photo: image.sourcePhotoUrl,
+          artifact: image.imageUrl,
+          mesh_url: mesh.meshUrl,
+          world_state: image.worldState ?? null,
+          placement: {
+            rotationDegrees: placement.rotationDegrees,
+            scale: placement.scale,
+            scaleXYZ: placement.scaleXYZ,
+            position: placement.position,
+            confidence: placement.confidence,
+            scoredRotationCandidates: placement.scoredRotationCandidates,
+          },
+        });
+
+        await refresh();
+        setSelectedId(saved.id);
+        setPipeline(
+          mesh.provider === "placeholder"
+            ? "on the map — mesh generation was unavailable, so this uses the placeholder"
+            : "on the map",
+        );
+      } catch (err) {
+        setPipeline(null);
+        setPipelineError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [located, neighbors, refresh],
+  );
 
   /** The pitch's strongest beat: zoom out so the whole propagated area shows. */
   const revealArea = useCallback((source: Generation, radiusMeters: number) => {
@@ -131,7 +206,10 @@ export default function App() {
           address={located?.selected?.tags.name ?? located?.address ?? null}
           lat={located?.lat ?? null}
           lng={located?.lng ?? null}
+          onGenerated={onImageGenerated}
         />
+        {pipeline && <div className="mono-sm">{pipeline}</div>}
+        {pipelineError && <div className="mono-sm error-text">{pipelineError}</div>}
 
         <h3>view</h3>
         <div className="btn-grid">

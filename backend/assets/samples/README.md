@@ -10,6 +10,7 @@ without calling the HF Spaces. Everything here came out of `/api/generate-image`
 | `burruss_flooded.png` | `/api/generate-image` output, "flooded" prompt |
 | `burruss_scorched.glb`, `burruss_flooded.glb` | `/api/generate-mesh` output (SF3D + normalization), fitted to the real footprint below |
 | `*.mesh-response.json` | The exact JSON `/api/generate-mesh` returned for each (URLs point at localhost:8000) |
+| `hitt_flooded.glb` + `.mesh-response.json` | The same flooded image fitted to **Hitt Hall's** footprint (94.69 x 49.25 m), so step 10's Propagate has a real neighbour to reveal |
 | `burruss_footprint.json` | `POST /api/footprint {lat: 37.2288, lng: -80.4236}` → Burruss Hall, OSM relation 1074686, 101.88 x 70.79 m, bearing 137.07 |
 
 ## Mesh convention (every mesh the backend returns)

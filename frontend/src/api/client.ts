@@ -1,12 +1,15 @@
 import type {
+  ConfidenceState,
   Correction,
+  FootprintCandidate,
   FootprintResult,
   GenerateImageResult,
   GenerateMeshResult,
-  GeocodeResult,
   Generation,
-  MapillaryLookup,
   GenerationCreate,
+  GeocodeResult,
+  MapillaryLookup,
+  PlacementResult,
   PropagateResponse,
   WorldState,
   WorldStateOption,
@@ -106,6 +109,27 @@ export function generateMesh(
   return request<GenerateMeshResult>("/api/generate-mesh", {
     method: "POST",
     body: JSON.stringify({ imageUrl, ...footprint }),
+    signal,
+  });
+}
+
+/**
+ * Step 08 — rotation, scale and ground position for a normalized mesh against the real
+ * footprint. Pure computation on the backend: it never re-queries Overpass, so pass step
+ * 02's `neighbors` straight through for the collision check.
+ */
+export function computePlacement(
+  body: {
+    footprint: FootprintCandidate;
+    meshExtentsMeters: { width: number; depth: number; height: number };
+    neighbors?: FootprintCandidate[];
+    footprintConfidence?: ConfidenceState;
+  },
+  signal?: AbortSignal,
+) {
+  return request<PlacementResult>("/api/placement", {
+    method: "POST",
+    body: JSON.stringify(body),
     signal,
   });
 }

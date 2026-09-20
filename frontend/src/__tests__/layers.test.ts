@@ -5,6 +5,7 @@ import {
   orientationFor,
   positionFor,
   scaleFor,
+  visibleRows,
 } from "../map/layers";
 import type { Generation } from "../types/contract";
 
@@ -85,5 +86,32 @@ describe("groupByMesh", () => {
   it("routes rows with no mesh to the placeholder instead of dropping them", () => {
     const groups = groupByMesh([row({ mesh_url: null })], "/placeholder.glb");
     expect(groups.get("/placeholder.glb")).toHaveLength(1);
+  });
+});
+
+describe("visibleRows", () => {
+  const row = (id: string, address: string, created_at: string) =>
+    ({ id, address, created_at, placement: {}, mesh_url: `/${id}.glb` }) as never;
+
+  it("keeps only the newest generation per address", () => {
+    const rows = [
+      row("a1", "Burruss Hall", "2026-09-19T01:00:00Z"),
+      row("a2", "Burruss Hall", "2026-09-19T02:00:00Z"),
+      row("b1", "Torgersen Hall", "2026-09-19T01:30:00Z"),
+    ];
+    expect(visibleRows(rows).map((r) => r.id).sort()).toEqual(["a2", "b1"]);
+  });
+
+  it("shows the selected generation instead, so picking a history entry swaps the mesh", () => {
+    const rows = [
+      row("a1", "Burruss Hall", "2026-09-19T01:00:00Z"),
+      row("a2", "Burruss Hall", "2026-09-19T02:00:00Z"),
+    ];
+    expect(visibleRows(rows, "a1").map((r) => r.id)).toEqual(["a1"]);
+  });
+
+  it("does not collapse rows that have no address", () => {
+    const rows = [row("a1", "", "2026-09-19T01:00:00Z"), row("a2", "", "2026-09-19T02:00:00Z")];
+    expect(visibleRows(rows)).toHaveLength(2);
   });
 });
