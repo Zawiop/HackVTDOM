@@ -66,7 +66,7 @@ export default function WorldStatePanel({
 
     try {
       const generated = await generateImage(
-        photos[0],
+        photos,
         { worldState: chosen ?? undefined, worldStatePrompt: override },
         controller.signal,
       );
@@ -140,7 +140,10 @@ export default function WorldStatePanel({
       </label>
 
       {photos.length > 1 && (
-        <p className="hint">{photos.length} selected — the first is sent.</p>
+        <p className="hint">
+          {photos.length} selected — the sharpest, best-exposed one is used.
+          They are not combined: the models take a single image.
+        </p>
       )}
 
       {/*
@@ -176,6 +179,16 @@ export default function WorldStatePanel({
               <figcaption className="hint">after</figcaption>
             </figure>
           </div>
+          {result.photoSelection && result.photoSelection.count > 1 && (
+            <p className="hint">
+              Used photo {result.photoSelection.chosenIndex + 1} of{" "}
+              {result.photoSelection.count}
+              {result.photoSelection.chosenName
+                ? ` (${result.photoSelection.chosenName})`
+                : ""}{" "}
+              — sharpest of the set.
+            </p>
+          )}
           <p className="mono-sm">
             {result.promptSource === "override" ? "your description" : result.worldState} ·{" "}
             {result.provider}

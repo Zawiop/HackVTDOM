@@ -98,6 +98,34 @@ class ProviderAttempt(BaseModel):
     timeout: Optional[bool] = None
 
 
+class PhotoScore(BaseModel):
+    """How one uploaded photo rated as the source for reconstruction."""
+
+    ok: bool
+    score: float
+    sharpness: float = 0.0
+    exposure: float = 0.0
+    detail: float = 0.0
+    width: int = 0
+    height: int = 0
+    chosen: bool = False
+    error: Optional[str] = None
+
+
+class PhotoSelection(BaseModel):
+    """Which of several uploaded photos was actually used, and why.
+
+    Both models downstream take a single image, so extra photos are not fused —
+    the best one is picked. Returning the scores keeps that honest and lets the
+    UI offer an override.
+    """
+
+    count: int
+    chosenIndex: int
+    chosenName: Optional[str] = None
+    scores: List[PhotoScore] = []
+
+
 class GenerateImageResult(BaseModel):
     # PNG of the redesigned building: the "after" panel and the input to /generate-mesh.
     imageUrl: str
@@ -114,6 +142,8 @@ class GenerateImageResult(BaseModel):
     attempts: List[ProviderAttempt]
     cached: bool
     elapsedMs: int
+    # Present when more than one photo was uploaded.
+    photoSelection: Optional[PhotoSelection] = None
 
 
 class MeshNormalization(BaseModel):

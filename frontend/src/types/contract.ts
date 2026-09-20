@@ -89,6 +89,28 @@ export interface ProviderAttempt {
 }
 
 /** Step 05 — POST /api/generate-image (multipart: photo, worldStatePrompt) */
+/** How one uploaded photo rated as the source for reconstruction. */
+export interface PhotoScore {
+  ok: boolean;
+  score: number;
+  sharpness: number;
+  exposure: number;
+  detail: number;
+  width: number;
+  height: number;
+  chosen: boolean;
+  error: string | null;
+}
+
+/** Which of several uploaded photos was used, and why. Not a fusion of them:
+ *  both models downstream take a single image, so the best one is picked. */
+export interface PhotoSelection {
+  count: number;
+  chosenIndex: number;
+  chosenName: string | null;
+  scores: PhotoScore[];
+}
+
 export interface GenerateImageResult {
   /** PNG of the redesigned building: the "after" panel, and the input to generate-mesh. */
   imageUrl: string;
@@ -105,6 +127,8 @@ export interface GenerateImageResult {
   attempts: ProviderAttempt[];
   cached: boolean;
   elapsedMs: number;
+  /** Present when more than one photo was uploaded. */
+  photoSelection?: PhotoSelection | null;
 }
 
 /**

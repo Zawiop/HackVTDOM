@@ -80,12 +80,14 @@ export function getWorldStates(signal?: AbortSignal) {
  * (the backend answers 502/504 with `retryable: true` rather than hanging).
  */
 export function generateImage(
-  photo: Blob,
+  photo: Blob | Blob[],
   selection: { worldState?: WorldState; worldStatePrompt?: string },
   signal?: AbortSignal,
 ) {
   const form = new FormData();
-  form.append("photo", photo);
+  // "one or more photographs" (spec 03). The backend scores them and uses the
+  // sharpest, best-exposed one — they are not fused, and it reports which.
+  for (const p of Array.isArray(photo) ? photo : [photo]) form.append("photo", p);
   // Step 04: send the spectrum id, not prompt text — the locked description is
   // resolved server-side. `worldStatePrompt` is the freeform override only.
   if (selection.worldState) form.append("worldState", selection.worldState);

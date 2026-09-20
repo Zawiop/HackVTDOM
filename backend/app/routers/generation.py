@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.datastructures import UploadFile
 
 from ..generation import config, storage
+from ..generation import photo_select
 from ..generation.image_edit import BadImage, ImageGenerationFailed, generate_redesigned_image
 from ..generation.entrances import warm as warm_entrance_detector
 from ..generation.mesh_generate import generate_mesh, warm_cutout_model
@@ -153,8 +154,11 @@ async def generate_image(request: Request):
         form = await request.form()
     except Exception:
         return _error(400, "expected multipart/form-data with 'photo' and a World State")
-    photo = form.get("photo")
-    if not isinstance(photo, UploadFile):
+    # "one or more photographs" (spec 03). Both models downstream take exactly
+    # one image, so extra photos are not fused — the sharpest, best-exposed one
+    # is chosen and the scores come back so the UI can say which and why.
+    uploads = [f for f in form.getlist("photo") if isinstance(f, UploadFile)]
+    if not uploads:
         return _error(400, "missing 'photo' file field")
 
     try:
@@ -165,11 +169,25 @@ async def generate_image(request: Request):
         return _error(400, str(e))
 
     try:
-        data = await _read_upload(photo)
+        datas = [await _read_upload(u) for u in uploads]
+        if len(datas) == 1:
+            best, scores = 0, []
+        else:
+            best, scores = photo_select.choose_best(datas)
         result = await generate_redesigned_image(
-            data, prompt, force=_truthy(form.get("force")), world_state=world_state
+            datas[best], prompt, force=_truthy(form.get("force")), world_state=world_state
         )
-        return {**result, "worldState": world_state, "promptSource": prompt_source}
+        return {
+            **result,
+            "worldState": world_state,
+            "promptSource": prompt_source,
+            "photoSelection": {
+                "count": len(datas),
+                "chosenIndex": best,
+                "chosenName": getattr(uploads[best], "filename", None),
+                "scores": scores,
+            },
+        }
     except BadImage as e:
         return _error(415, str(e))
     except ValueError as e:
