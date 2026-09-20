@@ -58,13 +58,16 @@ _PRESETS: Dict[str, dict] = {
         "blurb": "Fire passed through and burnt itself out.",
         "spectrumPosition": 3,
         "prompt": (
-            "Fire went through the building and burnt itself out a long time ago. Soot plumes "
-            "streak the facade above every opening, the windows are empty sockets with warped "
-            "frames, and whole sections of roof and floor have fallen in to leave charred beams "
-            "standing against the sky. Ash has drifted against the sills, the surviving concrete is "
-            "spalled and crazed, dead bare trees stand around it, and rusted-out vehicle hulks sit "
-            "where they stopped. Warm ochre and sepia palette, low harsh sun burning through thick "
-            "dust haze, photoreal."
+            "Fire has scorched the surfaces of this same building, but its structure remains "
+            "complete. Preserve every original tower, wing, roof plane, cornice, wall, window "
+            "frame and doorway, with the same silhouette and proportions. Keep roofs and floors "
+            "intact; do not create holes, missing faces, collapsed sections or exposed interiors. "
+            "Show irregular charcoal soot streaks above existing openings, localized blackened "
+            "timber, fine surface crazing and pale grey ash caught on ledges. Retain recognizable "
+            "stone and brick texture beneath the damage. A charcoal and pale-grey ash palette "
+            "with the original masonry colours still visible. Use neutral daylight and material-local "
+            "damage, not a global orange/sepia filter, orange fog, fire glow or directional baked "
+            "lighting. Photoreal, with the original architectural detail clearly readable."
         ),
     },
     "buried": {

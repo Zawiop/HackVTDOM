@@ -1,0 +1,9 @@
+# Standalone CPU pipeline; no PyTorch, model weights, API keys or CUDA.
+numpy>=1.26,<3
+scipy>=1.11,<2  # trimesh sparse weighted vertex normals
+trimesh>=4.4,<6
+pillow>=10,<13
+shapely>=2.0,<3
+opencv-python-headless>=4.8,<5
+pyproj>=3.6,<4
+mapbox-earcut>=1.0,<3

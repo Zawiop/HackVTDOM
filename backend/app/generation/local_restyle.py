@@ -6,8 +6,8 @@ Space is out of daily quota, and hf-inference answers 402. That is not
 something code can fix, but it must not mean the product stops working: a
 judge clicking a building has to get *something* back.
 
-So this is a deterministic local restyle: a per-World-State colour grade,
-haze, vignette and tint applied to the photo the user actually uploaded. It is
+So this is a deterministic local restyle: neutral soot/ash surface weathering
+for scorched; a colour grade, haze and vignette for the other states. It is
 NOT image generation and nothing here pretends otherwise — the response marks
 the provider `local-restyle` and the UI says so. What it buys is a pipeline
 that always completes: the photo still becomes a distinct per-state image, the
@@ -19,6 +19,8 @@ import io
 
 import numpy as np
 from PIL import Image, ImageEnhance, ImageFilter
+
+from .scorch_material import scorch_surface
 
 # (tint rgb, tint strength, brightness, contrast, saturation, haze rgb, haze strength)
 _GRADES: dict[str, dict] = {
@@ -88,6 +90,13 @@ def restyle(photo: bytes, world_state: str | None, prompt: str = "") -> bytes:
 
     img = Image.open(io.BytesIO(photo))
     img = img.convert("RGB")
+
+    if state == "scorched":
+        # Surface detail remains in place; no orange wash, haze or silhouette edits.
+        out = scorch_surface(img).convert("RGB")
+        buf = io.BytesIO()
+        out.save(buf, format="JPEG", quality=90)
+        return buf.getvalue()
 
     img = ImageEnhance.Color(img).enhance(g["saturation"])
     img = ImageEnhance.Brightness(img).enhance(g["brightness"])

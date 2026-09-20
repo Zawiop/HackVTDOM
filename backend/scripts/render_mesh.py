@@ -27,10 +27,8 @@ def face_colors(mesh: trimesh.Trimesh) -> np.ndarray:
 def render(path: str, out: str, title: str = "") -> None:
     scene = trimesh.load(path, force="scene")
     mesh = scene.to_geometry()
-    if len(mesh.faces) > 12000:
-        # Keep the plot responsive: drop faces uniformly.
-        idx = np.linspace(0, len(mesh.faces) - 1, 12000).astype(int)
-        mesh = trimesh.Trimesh(mesh.vertices, mesh.faces[idx], visual=mesh.visual.face_subset(idx) if hasattr(mesh.visual, "face_subset") else None, process=False)
+    # Render every triangle. Subsampling faces punches artificial holes into a
+    # complete surface and makes this geometry-check preview misleading.
     v = mesh.vertices
     # glTF (x, y-up, z) -> matplotlib (x, -z, y) so "up" is up on screen.
     pts = np.column_stack([v[:, 0], -v[:, 2], v[:, 1]])

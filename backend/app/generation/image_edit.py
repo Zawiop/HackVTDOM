@@ -31,7 +31,7 @@ PROMPT_TEMPLATE = (
     "this scene: {prompt}"
 )
 MAX_INPUT_SIDE = 1536
-CACHE_VERSION = "image-v1"
+CACHE_VERSION = "image-v2"  # complete scorched architecture and neutral surface weathering
 
 
 _LOCAL_STATE: ContextVar[str | None] = ContextVar("world_state", default=None)

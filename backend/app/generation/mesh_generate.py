@@ -24,7 +24,8 @@ from . import config, storage
 from .image_edit import BadImage
 from .entrances import mark_entrances
 from .mesh_normalize import normalize_glb
-from .multiview import generate_multiview_mesh, tint_to_world_state
+from .multiview import generate_multiview_mesh
+from .multiview_texture import texture_multiview_mesh
 from .providers import (
     ProviderError,
     ProviderTimeout,
@@ -35,7 +36,7 @@ from .providers import (
     start_cooldown,
 )
 
-CACHE_VERSION = "mesh-v5"  # bump whenever normalization/entrance output changes
+CACHE_VERSION = "mesh-v7"  # photo atlas for shape-only multiview output; bounded triangle count
 MIN_FOREGROUND_FRACTION = 0.02
 
 _cutout_session = None
@@ -242,6 +243,14 @@ async def generate_mesh(
                 config.MESH_ATTEMPT_TIMEOUT_S,
                 "hunyuan3d-mv",
             )
+            # The working endpoint returns shape ONLY. A flat tint does not
+            # contain the uploaded building's windows or facade. Project the
+            # actual cutout photos before normalization rotates the camera frame.
+            try:
+                raw_mv, texture_info = await asyncio.to_thread(texture_multiview_mesh, raw_mv, cut_views)
+            except Exception as e:
+                raise ProviderError("hunyuan3d-mv", f"photo texturing failed: {type(e).__name__}: {str(e)[:160]}") from e
+            warnings.append(texture_info["warning"])
             attempts.append({
                 "provider": "hunyuan3d-mv", "round": 0, "ok": True,
                 "views": sorted(cut_views), "ms": int((time.monotonic() - started) * 1000),
@@ -298,16 +307,8 @@ async def generate_mesh(
     except Exception as e:
         warnings.append(f"entrance marking failed, mesh returned unmarked: {type(e).__name__}: {str(e)[:200]}")
 
-    # Last, because every earlier step rewrites the .glb: normalization rebuilds
-    # materials and entrance marking re-exports the scene, and each one drops
-    # vertex colours on the way through. Hunyuan3D output has no texture at all
-    # (its textured endpoint is broken server-side), so without this the
-    # building renders plain grey.
-    if provider == "hunyuan3d-mv":
-        try:
-            glb = await asyncio.to_thread(tint_to_world_state, glb, world_state)
-        except Exception as e:
-            warnings.append(f"World State tint failed, mesh returned untinted: {type(e).__name__}")
+    # Multiview material is now an embedded photo atlas. Do not multiply it by
+    # the old dark state tint and vertex shading, which obscured facade detail.
 
     _, mesh_url = storage.save_bytes(glb, "meshes", "glb")
     result = {

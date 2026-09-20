@@ -61,10 +61,11 @@ def test_the_grade_actually_changes_the_photo(photo):
 
 
 def test_flooded_is_cooler_than_scorched(photo):
-    _, _, flooded_b = mean_rgb(restyle(photo, "flooded"))
+    flooded_r, _, flooded_b = mean_rgb(restyle(photo, "flooded"))
     scorched_r, _, scorched_b = mean_rgb(restyle(photo, "scorched"))
-    assert flooded_b > scorched_b
-    assert scorched_r > mean_rgb(restyle(photo, "flooded"))[0]
+    # Compare colour balance, not absolute brightness. Neutral scorched masonry
+    # should not be forced darker/oranger just to match the old global grade.
+    assert flooded_b-flooded_r > scorched_b-scorched_r
 
 
 def test_petrified_is_close_to_grey(photo):

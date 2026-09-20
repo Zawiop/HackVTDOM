@@ -1,23 +1,20 @@
 """Multi-view reconstruction from several photos of the same building.
 
 SF3D infers a whole building from one photograph, which means everything the
-camera could not see is invention. Give a model four sides and the geometry
-stops being a guess: `tencent/Hunyuan3D-2mv` takes front/back/left/right and
-reconstructs from all of them.
+camera could not see is invention. `tencent/Hunyuan3D-2mv` takes front/back/left/right and
+reconstructs from all of them, though unseen/occluded geometry remains uncertain.
 
 Two things about this space are worth knowing before reading the code.
 
 Its `/generation_all` endpoint — the one that also paints a texture — fails
 server-side with a PyMeshLabException in about five seconds, on clean
 background-removed input, every time. Only `/shape_generation` works, and that
-returns `white_mesh.glb`: accurate geometry with no texture and no vertex
+returns `white_mesh.glb`: inferred geometry with no texture and no vertex
 colours at all.
 
-So this trades texture for geometry, and that trade is the reason it is opt-in
-rather than the default. An untextured building would read as a grey blob on
-the map, so the mesh is tinted to its own World State here — a scorched
-building comes back ochre, a flooded one teal — which matches the ground it
-stands in and looks deliberate rather than broken.
+The pipeline now calls multiview_texture.texture_multiview_mesh to decimate and
+project the supplied photos before normalization. The older tint helper remains
+for explicit legacy callers; a flat tint is not a replacement for photo texture.
 """
 from __future__ import annotations
 
@@ -47,7 +44,7 @@ VIEWS = ("front", "back", "left", "right")
 # palette. These sit deliberately lighter than the matching terrain core so the
 # building reads as standing *in* the state rather than dissolving into it.
 _TINTS: dict[str, tuple[int, int, int]] = {
-    "scorched": (112, 76, 42),
+    "scorched": (108, 106, 103),  # neutral char/ash, not an orange state tint
     "flooded": (56, 86, 92),
     "reclaimed": (70, 92, 48),
     "buried": (130, 112, 82),
@@ -94,6 +91,9 @@ def tint_to_world_state(glb: bytes, world_state: str | None) -> bytes:
         if str(name).startswith("entrance_"):
             continue
         visual = getattr(geom, "visual", None)
+        if getattr(visual, "kind", None) in ("vertex", "face"):
+            # Source architectural colour is not ours to replace with a state tint.
+            continue
         if getattr(visual, "kind", None) in ("vertex", "face", "texture"):
             # Already carries colour of its own; do not overwrite it.
             if getattr(visual, "kind", None) == "texture" and _has_real_texture(visual):
@@ -110,7 +110,17 @@ def tint_to_world_state(glb: bytes, world_state: str | None) -> bytes:
                 roughnessFactor=0.85,
             )
         )
-        geom.visual.vertex_attributes["color"] = _shade(geom, rgb)
+        if world_state == "scorched":
+            # World-space irregular soot/ash instead of baked directional lighting.
+            p = np.asarray(geom.vertices, dtype=np.float32)
+            p = (p-geom.bounds[0])/np.maximum(geom.extents, 1e-6)
+            soot = np.clip(.45+.25*np.sin(19*p[:, 0]+7*p[:, 2])*
+                           np.cos(11*p[:, 1])+ .15*np.sin(37*p[:, 2]+3*p[:, 1]), 0, 1)
+            color = np.array([164, 163, 159])*(1-.7*soot[:, None])
+            geom.visual.vertex_attributes["color"] = np.column_stack([
+                color.astype(np.uint8), np.full(len(color), 255, np.uint8)])
+        else:
+            geom.visual.vertex_attributes["color"] = _shade(geom, rgb)
         touched = True
 
     if not touched:
