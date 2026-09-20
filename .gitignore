@@ -61,3 +61,6 @@ tmp/
 
 # Local placement debug render (scripts/placement_preview.py)
 backend/placement-preview.html
+
+# Runtime undo stash (written by the app, not source)
+backend/trash.json
