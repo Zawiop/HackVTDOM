@@ -415,3 +415,101 @@ def test_undo_is_single_level(client, store):
 def test_a_failed_delete_id_leaves_no_stash_behind(client):
     assert client.delete("/api/generations/does-not-exist").status_code == 404
     assert client.get("/api/world/undo").json()["available"] is False
+
+
+# --- one seed source ------------------------------------------------------
+#
+# `assets/seed-world.json` is the seed dataset: `POST /api/world/seed` loads
+# it and `app/startup.py` auto-seeds from it on a cold start. The scripts in
+# `seed/` are the tools that produced it and the extras that sit on top.
+#
+# These guard the boundary between them. It was crossed once: prebake_demo
+# wrote Pamplin Hall with its real generated mesh, seed_demo wrote Pamplin
+# Hall again with the grey placeholder, both ran at boot, and because the map
+# draws the newest row per address the placeholder won — a deployed instance
+# served Pamplin as a grey box with its real mesh hidden underneath.
+
+
+def _seed_addresses() -> set[str]:
+    return {r.address for r in worldio.load_seed_world()}
+
+
+def test_the_seed_world_has_no_duplicate_states():
+    rows = worldio.load_seed_world()
+    keys = [(r.address, r.world_state) for r in rows]
+    assert len(keys) == len(set(keys)), "two rows for the same address and world state"
+
+
+def test_the_seed_world_has_no_duplicate_ids():
+    ids = [r.id for r in worldio.load_seed_world()]
+    # Duplicated ids would make restore_generations skip rows as "already
+    # present" and silently seed a smaller world than the file describes.
+    assert len(ids) == len(set(ids))
+
+
+def test_seed_demo_does_not_overlap_the_seed_world():
+    """The regression this file exists for."""
+    from seed import seed_demo
+
+    overlap = seed_demo.addresses() & _seed_addresses()
+    assert not overlap, (
+        f"seed/seed_demo.py writes {sorted(overlap)}, which the committed seed world "
+        "already carries with a real mesh — the placeholder copy would hide it"
+    )
+
+
+def test_prebake_covers_exactly_the_seed_world():
+    """The generator and its committed artifact describe the same buildings.
+
+    If they drift, `seed-world.json` is no longer what prebake produces and the
+    boot path stops matching what anyone regenerating by hand would get.
+    """
+    from seed import prebake_demo
+
+    assert {d["address"] for d in prebake_demo.DEMOS} == _seed_addresses()
+    baked = {(d["address"], d["world_state"]) for d in prebake_demo.DEMOS}
+    seeded = {(r.address, r.world_state) for r in worldio.load_seed_world()}
+    assert baked == seeded
+
+
+def test_every_seed_row_carries_a_real_mesh_not_the_placeholder():
+    # The point of the committed seed world is that it shows real generated
+    # buildings offline. A placeholder in here would be a grey box on a map
+    # whose whole pitch is the buildings.
+    for row in worldio.load_seed_world():
+        assert row.mesh_url and "placeholder" not in row.mesh_url, row.address
+
+
+def test_the_boot_path_and_the_seed_route_agree(client, store, monkeypatch):
+    """Auto-seed on a cold start == POST /api/world/seed. One dataset, one code path."""
+    import asyncio
+
+    from app import startup
+    from app import store as store_module
+
+    client.post("/api/world/seed")
+    from_route = {(r.id, r.address, r.world_state) for r in store.list_generations()}
+
+    store.delete_all()
+    # startup imports build_store inside the function, so it resolves from
+    # app.store at call time — patching the startup module would do nothing.
+    monkeypatch.setattr(store_module, "build_store", lambda _settings: store)
+    asyncio.run(startup.ensure_demo_seeded())
+    from_boot = {(r.id, r.address, r.world_state) for r in store.list_generations()}
+
+    assert from_boot == from_route
+    assert from_boot, "the boot path seeded nothing"
+
+
+def test_the_boot_path_leaves_a_populated_store_alone(client, store, monkeypatch):
+    import asyncio
+
+    from app import startup
+    from app import store as store_module
+
+    client.post("/api/generations", json=_payload(address="Somewhere Real"))
+    monkeypatch.setattr(store_module, "build_store", lambda _settings: store)
+    asyncio.run(startup.ensure_demo_seeded())
+
+    # A warm instance must not have the demo world appear underneath a real one.
+    assert [r.address for r in store.list_generations()] == ["Somewhere Real"]

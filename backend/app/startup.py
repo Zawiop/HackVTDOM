@@ -5,19 +5,26 @@ Render's free tier wipes local disk — the SQLite file and everything under
 inactivity. A judge loading the site right after that would otherwise see an
 empty map.
 
-This calls the exact same path `POST /api/world/seed` does: read the world
-committed at `assets/seed-world.json`, insert its rows verbatim. No network
-call, no Overpass, no provider — every URL in that file points at
-`assets/samples/`, which is in the repo, so this works even with every
-external dependency this project has offline at once. It is guarded by the
-store already having rows, so it is a no-op on a warm instance or a
-populated Supabase project, and it never overwrites or duplicates anything.
+Seeds from `assets/seed-world.json`, which is the one seed dataset — the same
+file `POST /api/world/seed` loads, through the same function. Booting used to
+run `seed/prebake_demo.py` and then `seed/seed_demo.py`, and those two overlap:
+prebake writes Pamplin Hall with its real mesh, seed_demo writes Pamplin Hall
+again with the grey placeholder. Since the map shows the newest row per
+address and seed_demo ran second, a cold-started instance served Pamplin as a
+placeholder box with its real mesh hidden underneath.
 
-`seed/prebake_demo.py --live` is the separate, deliberately-manual tool for
-*regenerating* `assets/seed-world.json` and its referenced files against the
-real providers when someone wants fresher demo content — it is not part of
-this boot path, so a stray automatic run can never call an AI provider or
-spend anyone's quota.
+The single path also fixes two quieter problems. `save_generation` mints a new
+id per call, so the old boot path duplicated its whole dataset if it ever ran
+twice against a non-empty store; `restore_generations` keeps the ids in the
+file and skips rows already present, so running it again is a no-op. And
+seed_demo computed placements through Overpass at boot — a network call on the
+startup path of a server whose whole reason for auto-seeding is that Overpass
+might be down. Everything in the JSON is already-computed step-08 output
+pointing at meshes committed to the repo.
+
+`seed/prebake_demo.py` and `seed/seed_demo.py` are still the tools that
+produced these artifacts, and still run by hand. They are no longer a second
+dataset that boots alongside this one.
 """
 
 import logging
@@ -52,11 +59,13 @@ async def ensure_demo_seeded() -> None:
         log.info("store already has %d row(s) — skipping auto-seed", len(existing))
         return
 
-    log.info("store is empty — auto-seeding the committed demo world")
+    log.info("store is empty — auto-seeding from the committed demo world")
     try:
         rows = worldio.load_seed_world()
-        restored = store.restore_generations(worldio.absolutize(rows))
-        log.info("auto-seed restored %d/%d row(s)", restored, len(rows))
+        # Rewritten onto this instance's PUBLIC_BASE_URL. The file stores every
+        # URL base-relative so the same bytes work on localhost and on Render.
+        written = store.restore_generations(worldio.absolutize(rows))
+        log.info("auto-seeded %d/%d row(s) from %s", written, len(rows), worldio.SEED_WORLD.name)
     except Exception:
         # A seeding hiccup must never take the whole API down — real address
         # lookups still work against an empty map.
