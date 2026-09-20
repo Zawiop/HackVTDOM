@@ -247,8 +247,11 @@ export function terrainFeatures(row: Generation): TerrainFeature[] {
   const out: TerrainFeature[] = [];
   for (let i = 0; i < profile.featureCount; i++) {
     const angle = rand() * Math.PI * 2;
-    // sqrt spreads them evenly by area; the 0.85 floor keeps them off the walls.
-    const dist = reach * (0.85 + Math.sqrt(rand()) * (profile.reach - 0.85));
+    // sqrt spreads them evenly by area. The floor is just outside the footprint
+    // circle: at 0.85 the corners of a long building reach past it, and debris
+    // landed on the walls, reading as holes punched in the mesh.
+    const inner = 1.08;
+    const dist = reach * (inner + Math.sqrt(rand()) * Math.max(0.2, profile.reach - inner));
     const east = Math.cos(angle) * dist;
     const north = Math.sin(angle) * dist;
     const { elevation, falloff } = heightAt(east, north, radius, profile, salt);

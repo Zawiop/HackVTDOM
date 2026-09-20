@@ -38,14 +38,22 @@ VIEWS = ("front", "back", "left", "right")
 
 # Base colour per World State, lifted from the terrain palette so a building
 # and the ground around it read as one place.
+# Tuned against the map, not picked on a colour wheel. Two things constrain
+# these: the LightingEffect runs about 1.9x total gain (ambient 1.05 + key 0.55
+# + fill 0.3), tuned for the already-dark baked textures SF3D returns, so a
+# mid-tone base washes out to near-white — the first attempt rendered a plain
+# grey building despite a correct material. Going dark enough to survive that
+# then sank the building into its own terrain, since the ground uses the same
+# palette. These sit deliberately lighter than the matching terrain core so the
+# building reads as standing *in* the state rather than dissolving into it.
 _TINTS: dict[str, tuple[int, int, int]] = {
-    "scorched": (150, 104, 56),
-    "flooded": (74, 116, 120),
-    "reclaimed": (96, 122, 66),
-    "buried": (188, 164, 122),
-    "petrified": (140, 138, 134),
+    "scorched": (112, 76, 42),
+    "flooded": (56, 86, 92),
+    "reclaimed": (70, 92, 48),
+    "buried": (130, 112, 82),
+    "petrified": (100, 99, 96),
 }
-_DEFAULT_TINT = (156, 150, 140)
+_DEFAULT_TINT = (104, 100, 94)
 
 
 def _shade(mesh: trimesh.Trimesh, rgb: tuple[int, int, int]) -> np.ndarray:
@@ -66,15 +74,55 @@ def _shade(mesh: trimesh.Trimesh, rgb: tuple[int, int, int]) -> np.ndarray:
 
 
 def tint_to_world_state(glb: bytes, world_state: str | None) -> bytes:
-    """Give an untextured mesh the colour of its World State."""
+    """Give an untextured mesh the colour of its World State.
+
+    Node-aware on purpose. This runs at the very end of the mesh pipeline,
+    after step 07 normalization (which rebuilds materials and would otherwise
+    drop vertex colours) and after entrance marking (which bakes glowing amber
+    portals in as extra nodes). Those portals already carry their own colour
+    and must keep it, so anything that is already coloured or textured is left
+    alone and the scene graph is preserved rather than concatenated.
+    """
     scene = trimesh.load(io.BytesIO(glb), file_type="glb", force="scene")
-    meshes = [m for m in scene.geometry.values() if isinstance(m, trimesh.Trimesh)]
-    if not meshes:
-        return glb
-    mesh = trimesh.util.concatenate(meshes) if len(meshes) > 1 else meshes[0]
     rgb = _TINTS.get(world_state or "", _DEFAULT_TINT)
-    mesh.visual = trimesh.visual.ColorVisuals(mesh=mesh, vertex_colors=_shade(mesh, rgb))
-    return trimesh.Scene(mesh).export(file_type="glb")
+
+    touched = False
+    for name, geom in scene.geometry.items():
+        if not isinstance(geom, trimesh.Trimesh) or not len(geom.faces):
+            continue
+        # Entrance portals are baked in with their own emissive colour.
+        if str(name).startswith("entrance_"):
+            continue
+        visual = getattr(geom, "visual", None)
+        if getattr(visual, "kind", None) in ("vertex", "face", "texture"):
+            # Already carries colour of its own; do not overwrite it.
+            if getattr(visual, "kind", None) == "texture" and _has_real_texture(visual):
+                continue
+        # Both, deliberately. Vertex colours carry the shading that keeps edges
+        # readable, but a glTF PBR material ignores COLOR_0 unless it opts in —
+        # deck.gl rendered the mesh plain grey with vertex colours alone. The
+        # baseColorFactor is what actually shows up on the map.
+        geom.visual = trimesh.visual.TextureVisuals(
+            material=trimesh.visual.material.PBRMaterial(
+                name=f"world-state-{world_state or 'neutral'}",
+                baseColorFactor=[rgb[0] / 255, rgb[1] / 255, rgb[2] / 255, 1.0],
+                metallicFactor=0.0,
+                roughnessFactor=0.85,
+            )
+        )
+        geom.visual.vertex_attributes["color"] = _shade(geom, rgb)
+        touched = True
+
+    if not touched:
+        return glb
+    return scene.export(file_type="glb")
+
+
+def _has_real_texture(visual) -> bool:
+    """True when a TextureVisuals actually carries an image, not just a material."""
+    material = getattr(visual, "material", None)
+    image = getattr(material, "image", None) or getattr(material, "baseColorTexture", None)
+    return image is not None
 
 
 def _as_png(data: bytes, path: Path) -> Path:
@@ -91,7 +139,7 @@ def generate_multiview_mesh(
     *,
     world_state: str | None = None,
 ) -> bytes:
-    """Reconstruct from 2-4 labelled views. Returns tinted .glb bytes.
+    """Reconstruct from 2-4 labelled views. Returns raw, untinted .glb bytes.
 
     `views` maps any of front/back/left/right to image bytes. Front is required
     — it is the only view the model treats as canonical, and without it the
@@ -148,4 +196,7 @@ def generate_multiview_mesh(
 
         raw = Path(path).read_bytes()
 
-    return tint_to_world_state(raw, world_state)
+    # Deliberately NOT tinted here. normalize_glb (step 07) rebuilds the
+    # material and converts vertex colours to a texture, silently losing them —
+    # the building then renders plain grey. The caller tints after normalizing.
+    return raw

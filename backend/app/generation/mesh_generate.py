@@ -24,7 +24,7 @@ from . import config, storage
 from .image_edit import BadImage
 from .entrances import mark_entrances
 from .mesh_normalize import normalize_glb
-from .multiview import generate_multiview_mesh
+from .multiview import generate_multiview_mesh, tint_to_world_state
 from .providers import (
     ProviderError,
     ProviderTimeout,
@@ -297,6 +297,17 @@ async def generate_mesh(
         warnings += entrance_warnings
     except Exception as e:
         warnings.append(f"entrance marking failed, mesh returned unmarked: {type(e).__name__}: {str(e)[:200]}")
+
+    # Last, because every earlier step rewrites the .glb: normalization rebuilds
+    # materials and entrance marking re-exports the scene, and each one drops
+    # vertex colours on the way through. Hunyuan3D output has no texture at all
+    # (its textured endpoint is broken server-side), so without this the
+    # building renders plain grey.
+    if provider == "hunyuan3d-mv":
+        try:
+            glb = await asyncio.to_thread(tint_to_world_state, glb, world_state)
+        except Exception as e:
+            warnings.append(f"World State tint failed, mesh returned untinted: {type(e).__name__}")
 
     _, mesh_url = storage.save_bytes(glb, "meshes", "glb")
     result = {

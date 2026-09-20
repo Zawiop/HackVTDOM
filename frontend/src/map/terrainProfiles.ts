@@ -57,8 +57,8 @@ export const PROFILES: Record<string, TerrainProfile> = {
     featureCount: 26,
     featureHeight: [3, 9],
     featureRadius: [0.6, 1.6],
-    featureColor: [58, 40, 26, 245],
-    featureAccent: [96, 70, 44, 235],
+    featureColor: [86, 62, 42, 238],
+    featureAccent: [126, 96, 64, 230],
   },
 
   // Standing water. A near-flat surface with a little swell, wreckage afloat.
@@ -76,8 +76,8 @@ export const PROFILES: Record<string, TerrainProfile> = {
     featureCount: 30,
     featureHeight: [0.4, 1.4],
     featureRadius: [1.2, 3.4],
-    featureColor: [46, 40, 34, 235],
-    featureAccent: [88, 108, 96, 220],
+    featureColor: [92, 86, 74, 225],
+    featureAccent: [120, 138, 126, 215],
   },
 
   // Forest taking the block back. Rolling undergrowth, a real canopy.

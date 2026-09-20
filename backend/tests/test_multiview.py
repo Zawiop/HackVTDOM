@@ -22,10 +22,31 @@ def a_box() -> bytes:
     return trimesh.Scene(mesh).export(file_type="glb")
 
 
-def colours_of(glb: bytes) -> np.ndarray:
+def body_of(glb: bytes) -> trimesh.Trimesh:
+    """The building mesh, ignoring any baked entrance portals."""
     scene = trimesh.load(io.BytesIO(glb), file_type="glb", force="scene")
-    mesh = trimesh.util.concatenate(list(scene.geometry.values()))
-    return np.asarray(mesh.visual.vertex_colors)
+    bodies = [
+        g for name, g in scene.geometry.items()
+        if isinstance(g, trimesh.Trimesh) and not str(name).startswith("entrance_")
+    ]
+    return bodies[0]
+
+
+def base_colour(glb: bytes) -> np.ndarray:
+    """The material colour that actually reaches the renderer, 0-255.
+
+    Asserted on rather than the vertex colours because a glTF PBR material
+    ignores COLOR_0 unless it opts in — deck.gl showed the mesh plain grey when
+    only vertex colours were set, so this is the value that matters.
+    """
+    mat = body_of(glb).visual.material
+    raw = np.asarray(mat.baseColorFactor, dtype=float)[:3]
+    # trimesh keeps this as 0-255 in memory and normalises to 0-1 on export.
+    return raw if raw.max() > 1.0 else raw * 255.0
+
+
+def shading_of(glb: bytes) -> np.ndarray:
+    return np.asarray(body_of(glb).visual.vertex_attributes["color"])
 
 
 def test_the_four_view_slots_are_the_ones_the_space_takes():
@@ -54,6 +75,14 @@ def test_empty_views_are_not_counted():
         generate_multiview_mesh({"front": b"x", "back": b""}, deadline=1e9)
 
 
+def test_tints_are_dark_enough_to_survive_the_map_lighting():
+    # The map runs ~1.9x total light gain, tuned for SF3D's dark baked textures.
+    # A mid-tone base under that washes out to near-white, which is exactly how
+    # the first version rendered: a grey building with a correct material.
+    for state in ["scorched", "flooded", "reclaimed", "buried", "petrified"]:
+        assert base_colour(tint_to_world_state(a_box(), state)).max() < 140
+
+
 def test_tinting_gives_an_untextured_mesh_vertex_colours():
     plain = a_box()
     scene = trimesh.load(io.BytesIO(plain), file_type="glb", force="scene")
@@ -61,12 +90,13 @@ def test_tinting_gives_an_untextured_mesh_vertex_colours():
     assert before.visual.kind != "vertex"
 
     tinted = tint_to_world_state(plain, "scorched")
-    assert colours_of(tinted).shape[1] == 4
+    assert shading_of(tinted).shape[1] == 4
+    assert base_colour(tinted).max() > 0
 
 
 def test_each_world_state_gets_its_own_colour():
     states = ["scorched", "flooded", "reclaimed", "buried", "petrified"]
-    means = {s: colours_of(tint_to_world_state(a_box(), s))[:, :3].mean(axis=0) for s in states}
+    means = {s: base_colour(tint_to_world_state(a_box(), s)) for s in states}
     for a in states:
         for b in states:
             if a < b:
@@ -74,22 +104,21 @@ def test_each_world_state_gets_its_own_colour():
 
 
 def test_scorched_is_warm_and_flooded_is_cool():
-    warm = colours_of(tint_to_world_state(a_box(), "scorched"))[:, :3].mean(axis=0)
-    cool = colours_of(tint_to_world_state(a_box(), "flooded"))[:, :3].mean(axis=0)
+    warm = base_colour(tint_to_world_state(a_box(), "scorched"))
+    cool = base_colour(tint_to_world_state(a_box(), "flooded"))
     assert warm[0] > warm[2]
     assert cool[2] > cool[0]
 
 
 def test_shading_varies_across_the_mesh_so_edges_still_read():
     # One flat colour on a 400k-face mesh hides every edge it has.
-    cols = colours_of(tint_to_world_state(a_box(), "buried"))[:, :3]
+    cols = shading_of(tint_to_world_state(a_box(), "buried"))[:, :3]
     assert cols.std() > 1.0
 
 
 def test_an_unknown_state_still_gets_a_usable_colour():
-    cols = colours_of(tint_to_world_state(a_box(), "not-a-state"))
-    assert cols.shape[1] == 4
-    assert cols[:, :3].mean() > 0
+    assert base_colour(tint_to_world_state(a_box(), "not-a-state")).mean() > 0
+    assert shading_of(tint_to_world_state(a_box(), "not-a-state")).shape[1] == 4
 
 
 def test_a_mesh_with_no_triangles_is_returned_untouched():
