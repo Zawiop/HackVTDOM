@@ -1,8 +1,9 @@
-import { ScatterplotLayer, TextLayer } from "@deck.gl/layers";
+import { PolygonLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
 import { ScenegraphLayer } from "@deck.gl/mesh-layers";
 import { GLTFLoader } from "@loaders.gl/gltf";
 
 import type { Generation, PlacementOverrides } from "../types/contract";
+import { enclosingRadiusMeters, footprintCorners } from "./footprintGeometry";
 
 /**
  * Step 12 layer construction.
@@ -164,16 +165,51 @@ export function buildConfidenceRingLayer(rows: Generation[], opts: LayerOpts = {
     stroked: true,
     filled: false,
     radiusUnits: "meters",
-    getRadius: 14,
-    lineWidthUnits: "meters",
-    getLineWidth: 1.1,
+    // Sized to the building. A fixed radius was invisible around a 130 m hall
+    // and swallowed anything small, so the flag only read at one zoom.
+    getRadius: enclosingRadiusMeters,
+    lineWidthUnits: "pixels",
+    getLineWidth: 2,
+    lineWidthMinPixels: 1.5,
     getLineColor: [217, 96, 59, 235], // --sn-warn
     pickable: true,
     onClick: (info) => {
       if (info.object) onClick?.(info.object);
     },
-    updateTriggers: { getPosition: [selectedId, overrides?.position?.join(",")] },
+    updateTriggers: {
+      getPosition: [selectedId, overrides?.position?.join(",")],
+      getRadius: [selectedId],
+    },
   });
+}
+
+/**
+ * Contact shadow under each building.
+ *
+ * A ScenegraphLayer draws the mesh floating in screen space with nothing tying
+ * it to the ground, so buildings read as pasted onto the tiles. deck.gl's real
+ * shadow pass was tried and leaves hard artifacts across the mesh itself on an
+ * overlaid MapboxOverlay, so this is drawn geometrically instead: the actual
+ * footprint rectangle, rotated to the building's yaw, as two stacked polygons —
+ * a wide faint one for falloff and a tighter darker one for contact.
+ */
+export function buildGroundShadowLayers(rows: Generation[]) {
+  const shadow = (id: string, inflate: number, color: [number, number, number, number]) =>
+    new PolygonLayer<Generation>({
+      id,
+      data: rows,
+      getPolygon: (d: Generation) => footprintCorners(d, inflate),
+      getFillColor: color,
+      stroked: false,
+      filled: true,
+      extruded: false,
+      pickable: false,
+    });
+
+  return [
+    shadow("ground-shadow-soft", 1.13, [24, 28, 34, 26]),
+    shadow("ground-shadow-core", 1.0, [20, 24, 30, 56]),
+  ];
 }
 
 /** Neighbours inside the propagate radius that have no pre-baked row yet. */

@@ -36,4 +36,8 @@ async def compute_placement(request: PlacementRequest):
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    return PlacementResult(**result)
+    return PlacementResult(
+        **result,
+        footprintWidthMeters=request.footprint.footprintWidthMeters,
+        footprintDepthMeters=request.footprint.footprintDepthMeters,
+    )

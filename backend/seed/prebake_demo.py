@@ -61,10 +61,11 @@ DEMOS = [
         "mesh": SAMPLES / "burruss_flooded.glb",
         "mesh_response": SAMPLES / "burruss_flooded.mesh-response.json",
     },
-    # A neighbour in the same World State, so step 10's Propagate has something real to
-    # reveal (nothing shares a state otherwise, and it reports 0 honestly). Burruss's photo
-    # is reused deliberately: a neighbour has no photography of its own until the Mapillary
-    # path lands, and the mesh here is fitted to *Hitt Hall's* own footprint.
+    # The neighbourhood, all in the same World State so step 10's Propagate has something
+    # real to reveal at each radius: Norris/Pamplin/Hancock inside 100 m, the rest inside
+    # 250 m. Burruss's photo is reused deliberately — a neighbour has no photography of its
+    # own until the Mapillary path lands — but every mesh is fitted to *that building's*
+    # own OSM footprint, so the placement each one gets is genuinely its own.
     {
         "address": "Hitt Hall, Blacksburg, VA",
         "lat": 37.22945,
@@ -73,6 +74,51 @@ DEMOS = [
         "image": SAMPLES / "burruss_flooded.png",
         "mesh": SAMPLES / "hitt_flooded.glb",
         "mesh_response": SAMPLES / "hitt_flooded.mesh-response.json",
+    },
+    {
+        "address": "Norris Hall, Blacksburg, VA",
+        "lat": 37.22974,
+        "lng": -80.42315,
+        "world_state": "flooded",
+        "image": SAMPLES / "burruss_flooded.png",
+        "mesh": SAMPLES / "norris_flooded.glb",
+        "mesh_response": SAMPLES / "norris_flooded.mesh-response.json",
+    },
+    {
+        "address": "Pamplin Hall, Blacksburg, VA",
+        "lat": 37.22866,
+        "lng": -80.42467,
+        "world_state": "flooded",
+        "image": SAMPLES / "burruss_flooded.png",
+        "mesh": SAMPLES / "pamplin_flooded.glb",
+        "mesh_response": SAMPLES / "pamplin_flooded.mesh-response.json",
+    },
+    {
+        "address": "Hancock Hall, Blacksburg, VA",
+        "lat": 37.23026,
+        "lng": -80.42426,
+        "world_state": "flooded",
+        "image": SAMPLES / "burruss_flooded.png",
+        "mesh": SAMPLES / "hancock_flooded.glb",
+        "mesh_response": SAMPLES / "hancock_flooded.mesh-response.json",
+    },
+    {
+        "address": "Derring Hall, Blacksburg, VA",
+        "lat": 37.22907,
+        "lng": -80.4256,
+        "world_state": "flooded",
+        "image": SAMPLES / "burruss_flooded.png",
+        "mesh": SAMPLES / "derring_flooded.glb",
+        "mesh_response": SAMPLES / "derring_flooded.mesh-response.json",
+    },
+    {
+        "address": "Holden Hall, Blacksburg, VA",
+        "lat": 37.23019,
+        "lng": -80.42238,
+        "world_state": "flooded",
+        "image": SAMPLES / "burruss_flooded.png",
+        "mesh": SAMPLES / "holden_flooded.glb",
+        "mesh_response": SAMPLES / "holden_flooded.mesh-response.json",
     },
 ]
 
@@ -171,6 +217,10 @@ async def bake(entry: dict, live: bool) -> GenerationCreate:
             scoredRotationCandidates=[
                 ScoredRotation(**c) for c in computed["scoredRotationCandidates"]
             ],
+            # Carried so step 12 can draw at building scale: a fixed-radius flag
+            # ring is invisible on a 130 m hall and swamps a 9 m outbuilding.
+            footprintWidthMeters=fp.selected.footprintWidthMeters,
+            footprintDepthMeters=fp.selected.footprintDepthMeters,
         ),
     )
 

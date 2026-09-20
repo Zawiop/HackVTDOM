@@ -236,6 +236,12 @@ class PlacementResult(BaseModel):
     achievableIou: float
     warnings: List[str] = []
     rotation_note: str = ""
+    # The matched footprint's own size, echoed back from step 02. Step 12 needs
+    # an absolute metre size to draw anything *at building scale* — a flag ring,
+    # a ground shadow — and a stored row otherwise carries no idea whether it is
+    # a 9 m outbuilding or a 130 m hall.
+    footprintWidthMeters: Optional[float] = None
+    footprintDepthMeters: Optional[float] = None
 
 
 # --- Step 08 / 11: placement + persistence ---

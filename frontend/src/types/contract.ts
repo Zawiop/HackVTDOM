@@ -222,6 +222,11 @@ export interface PlacementRecord {
   position: [number, number, number];
   confidence: ConfidenceState;
   scoredRotationCandidates: { rotationDegrees: number; iou: number }[];
+  /** The matched footprint's own size, echoed from step 02 through step 08.
+   *  Lets the map draw at building scale instead of a fixed radius — a fixed
+   *  ring is invisible on a 130 m hall and swamps a 9 m outbuilding. */
+  footprintWidthMeters?: number | null;
+  footprintDepthMeters?: number | null;
 }
 
 /** Step 11 — one row per generation, never one per address.

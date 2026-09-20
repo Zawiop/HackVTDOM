@@ -13,6 +13,7 @@ import {
 } from "./basemap";
 import {
   buildConfidenceRingLayer,
+  buildGroundShadowLayers,
   buildLabelLayer,
   buildPendingLayer,
   buildRadiusLayer,
@@ -130,6 +131,8 @@ export default function MapView({
         propagate?.source ?? selected,
         propagate?.active ? propagate.radiusMeters : null,
       ),
+      // Under the meshes: shadows first, then the buildings on top.
+      ...buildGroundShadowLayers(shown),
       ...buildScenegraphLayers(shown, { onClick: onSelect, roll, selectedId, overrides }),
       buildConfidenceRingLayer(shown, { onClick: onSelect, selectedId, overrides }),
       buildPendingLayer(propagate?.pending),

@@ -1,0 +1,114 @@
+{
+ "meshUrl": "http://localhost:8000/outputs/meshes/45222809b90617c48c69793b.glb",
+ "rawMeshUrl": "http://localhost:8000/outputs/meshes/raw/453a7c5aa65b886db43fdf05.glb",
+ "cutoutUrl": "http://localhost:8000/outputs/cutouts/6855592389aa049f48c55bbe.png",
+ "confidence": "auto-high",
+ "provider": "sf3d",
+ "fallbackReason": null,
+ "normalization": {
+  "source": "sf3d",
+  "convention": "glTF +Y up; facade faces +Z; meters; origin at base-center (y=0 is ground)",
+  "upAxis": {
+   "from": "+Y",
+   "rotated": false
+  },
+  "front": {
+   "from": "-Z",
+   "yawDegrees": 180
+  },
+  "squareUpYawDegrees": 27.0,
+  "units": {
+   "source": "normalized (unitless)",
+   "method": "fit longest horizontal side to 98.63 m",
+   "scale": 103.3096
+  },
+  "pivot": "base-center",
+  "extentsMeters": {
+   "width": 98.63,
+   "depth": 40.33,
+   "height": 39.22
+  },
+  "footprint": {
+   "widthMeters": 98.63,
+   "depthMeters": 56.38,
+   "assumed": false
+  },
+  "removedFragments": 0,
+  "transform": [
+   [
+    -92.077424,
+    0.0,
+    -46.846837,
+    -0.782708
+   ],
+   [
+    0.0,
+    103.309623,
+    0.0,
+    20.308802
+   ],
+   [
+    46.846837,
+    0.0,
+    -92.077424,
+    -1.609648
+   ],
+   [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ]
+  ],
+  "faces": 18256,
+  "confidence": "auto-high",
+  "warnings": []
+ },
+ "entrances": [
+  {
+   "id": 0,
+   "isMain": true,
+   "position": [
+    0.0,
+    0.0,
+    7.095
+   ],
+   "facing": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "widthMeters": 4.0,
+   "heightMeters": 5.6,
+   "score": null,
+   "imageBox": null,
+   "source": "default",
+   "confidence": "auto-low"
+  }
+ ],
+ "warnings": [
+  "entrance detection needs torch (pip install -r requirements-local-mesh.txt)"
+ ],
+ "attempts": [
+  {
+   "provider": "triposr",
+   "ok": false,
+   "error": "Space stabilityai/TripoSR is RUNTIME_ERROR",
+   "ms": null,
+   "round": 0,
+   "skipped": true,
+   "timeout": null
+  },
+  {
+   "provider": "sf3d",
+   "ok": true,
+   "error": null,
+   "ms": 1823,
+   "round": 0,
+   "skipped": null,
+   "timeout": null
+  }
+ ],
+ "cached": false,
+ "elapsedMs": 11324
+}

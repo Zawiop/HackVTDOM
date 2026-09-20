@@ -11,6 +11,7 @@ without calling the HF Spaces. Everything here came out of `/api/generate-image`
 | `burruss_scorched.glb`, `burruss_flooded.glb` | `/api/generate-mesh` output (SF3D + normalization), fitted to the real footprint below |
 | `*.mesh-response.json` | The exact JSON `/api/generate-mesh` returned for each (URLs point at localhost:8000) |
 | `hitt_flooded.glb` + `.mesh-response.json` | The same flooded image fitted to **Hitt Hall's** footprint (94.69 x 49.25 m), so step 10's Propagate has a real neighbour to reveal |
+| `norris_`, `pamplin_`, `hancock_`, `derring_`, `holden_flooded.glb` + `.mesh-response.json` | The same flooded image fitted to each of those halls' own OSM footprints, so Propagate reveals a real neighbourhood: Norris/Pamplin inside 100 m, all six inside 250 m. **Holden is the useful one** — step 08 flags it `auto-low` on its own ("best rotation only reaches 57% of the achievable fit"), which is what the step 09 correction UI demonstrates against. It was not planted; that is simply how its mesh fits its footprint |
 | `burruss_footprint.json` | `POST /api/footprint {lat: 37.2288, lng: -80.4236}` → Burruss Hall, OSM relation 1074686, 101.88 x 70.79 m, bearing 137.07 |
 
 ## Mesh convention (every mesh the backend returns)
