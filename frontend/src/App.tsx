@@ -13,6 +13,7 @@ import WorldStatePanel from "./worldstate/WorldStatePanel";
 import type { LocatedPlace } from "./entry/EntryPanel";
 import { offsetMeters } from "./lib/geo";
 import { computePlacement, generateMesh, saveGeneration } from "./api/client";
+import type { SideView } from "./api/client";
 import type {
   FootprintCandidate,
   GenerateImageResult,
@@ -109,7 +110,10 @@ export default function App() {
    * rather than leaving a generated image stranded with nothing on the map.
    */
   const onImageGenerated = useCallback(
-    async (image: GenerateImageResult) => {
+    async (
+      image: GenerateImageResult,
+      sideViews?: Partial<Record<SideView, File>>,
+    ) => {
       const place = located;
       const footprint = place?.selected;
       if (!place || !footprint) {
@@ -118,11 +122,21 @@ export default function App() {
       }
       setPipelineError(null);
       try {
-        setPipeline("building the mesh…");
-        const mesh = await generateMesh(image.imageUrl, {
-          footprintWidthMeters: footprint.footprintWidthMeters,
-          footprintDepthMeters: footprint.footprintDepthMeters,
-        });
+        setPipeline(
+          sideViews
+            ? `reconstructing from ${Object.keys(sideViews).length + 1} views…`
+            : "building the mesh…",
+        );
+        const mesh = await generateMesh(
+          image.imageUrl,
+          {
+            footprintWidthMeters: footprint.footprintWidthMeters,
+            footprintDepthMeters: footprint.footprintDepthMeters,
+          },
+          undefined,
+          sideViews,
+          image.worldState ?? undefined,
+        );
 
         setPipeline("placing it on the footprint…");
         const placement = await computePlacement({

@@ -107,14 +107,39 @@ export function generateImage(
  * Steps 06+07. Pass step 02's selected footprint so the mesh comes back sized in meters.
  * Always resolves with a mesh; check `confidence` / `provider === "placeholder"`.
  */
+export type SideView = "back" | "left" | "right";
+
 export function generateMesh(
   imageUrl: string,
   footprint?: { footprintWidthMeters: number; footprintDepthMeters: number },
   signal?: AbortSignal,
+  /** Extra angles of the same building. With any of these the mesh is
+   *  reconstructed from every view instead of inferring the unseen sides. */
+  sideViews?: Partial<Record<SideView, Blob>>,
+  worldState?: string,
 ) {
+  const sides = Object.entries(sideViews ?? {}).filter(([, b]) => b) as [SideView, Blob][];
+  if (!sides.length) {
+    return request<GenerateMeshResult>("/api/generate-mesh", {
+      method: "POST",
+      body: JSON.stringify({ imageUrl, ...footprint, worldState }),
+      signal,
+    });
+  }
+  // Side views are local files, so this leg has to be multipart; the front
+  // stays a URL because the backend already has that image on disk.
+  const form = new FormData();
+  form.append("imageUrl", imageUrl);
+  if (footprint) {
+    form.append("footprintWidthMeters", String(footprint.footprintWidthMeters));
+    form.append("footprintDepthMeters", String(footprint.footprintDepthMeters));
+  }
+  if (worldState) form.append("worldState", worldState);
+  for (const [side, blob] of sides) form.append(`image_${side}`, blob);
   return request<GenerateMeshResult>("/api/generate-mesh", {
     method: "POST",
-    body: JSON.stringify({ imageUrl, ...footprint }),
+    body: form,
+    headers: {},
     signal,
   });
 }

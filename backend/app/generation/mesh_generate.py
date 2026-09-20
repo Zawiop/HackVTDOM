@@ -24,6 +24,7 @@ from . import config, storage
 from .image_edit import BadImage
 from .entrances import mark_entrances
 from .mesh_normalize import normalize_glb
+from .multiview import generate_multiview_mesh
 from .providers import (
     ProviderError,
     ProviderTimeout,
@@ -168,6 +169,8 @@ async def generate_mesh(
     footprint_depth_m: float | None = None,
     *,
     force: bool = False,
+    extra_views: dict[str, bytes] | None = None,
+    world_state: str | None = None,
 ) -> dict:
     t0 = time.monotonic()
     try:
@@ -176,8 +179,11 @@ async def generate_mesh(
     except OSError as e:
         raise BadImage(f"could not read image: {e}") from None
 
+    extra_views = {k: v for k, v in (extra_views or {}).items() if v}
     fp_key = f"{footprint_width_m}x{footprint_depth_m}"
-    key = storage.sha256(CACHE_VERSION, image_bytes, fp_key)
+    # Extra views change the geometry, so they have to change the cache key too.
+    view_key = "|".join(f"{k}:{storage.sha256(v)[:12]}" for k, v in sorted(extra_views.items()))
+    key = storage.sha256(CACHE_VERSION, image_bytes, fp_key, view_key, world_state or "")
     if not force and (hit := storage.cache_get(key)):
         return {**hit, "cached": True, "elapsedMs": int((time.monotonic() - t0) * 1000)}
 
@@ -197,10 +203,64 @@ async def generate_mesh(
     rgba.save(cut_png, "PNG")
     _, cutout_url = storage.save_bytes(cut_png.getvalue(), "cutouts", "png")
 
-    with tempfile.TemporaryDirectory(dir=config.OUTPUT_DIR) as tmp:
-        cut_path = Path(tmp) / "cutout.png"
-        cut_path.write_bytes(cut_png.getvalue())
-        generated = await _run_chain(cut_path, attempts)
+    # Several views of the same building -> reconstruct from all of them rather
+    # than inferring the unseen sides from one. Tried first, and only when the
+    # caller actually supplied extra views; it falls through to the single-view
+    # chain on any failure so a bad side photo can never cost the whole mesh.
+    generated = None
+    if extra_views:
+        started = time.monotonic()
+        try:
+            cut_views = {"front": cut_png.getvalue()}
+            dropped: list[str] = []
+            for name, data in extra_views.items():
+                side = ImageOps.exif_transpose(Image.open(io.BytesIO(data)))
+                side.load()
+                side_rgba, side_fg = await asyncio.to_thread(cut_out_building, side)
+                # A side photo with no building in it — a road-level frame where
+                # segmentation found nothing — makes the space raise IndexError
+                # on an empty cutout. Drop it here instead of losing the mesh.
+                if side_fg is not None and side_fg < MIN_FOREGROUND_FRACTION:
+                    dropped.append(f"{name} ({side_fg:.0%} foreground)")
+                    continue
+                buf = io.BytesIO()
+                side_rgba.save(buf, "PNG")
+                cut_views[name] = buf.getvalue()
+
+            if dropped:
+                warnings.append(
+                    "ignored side view(s) with no building found: " + ", ".join(dropped)
+                )
+            if len(cut_views) < 2:
+                raise ProviderError(
+                    "hunyuan3d-mv",
+                    "no usable side views (every extra photo segmented to nothing)",
+                )
+
+            raw_mv = await run_blocking(
+                lambda d: generate_multiview_mesh(cut_views, d, world_state=world_state),
+                config.MESH_ATTEMPT_TIMEOUT_S,
+                "hunyuan3d-mv",
+            )
+            attempts.append({
+                "provider": "hunyuan3d-mv", "round": 0, "ok": True,
+                "views": sorted(cut_views), "ms": int((time.monotonic() - started) * 1000),
+            })
+            generated = (raw_mv, "hunyuan3d-mv")
+        except ProviderError as e:
+            attempts.append({
+                "provider": "hunyuan3d-mv", "round": 0, "ok": False, "error": e.message,
+                "timeout": isinstance(e, ProviderTimeout), "ms": int((time.monotonic() - started) * 1000),
+            })
+            if e.quota:
+                start_cooldown("hunyuan3d-mv", f"quota: {e.message[:120]}")
+            warnings.append(f"multi-view failed, fell back to a single view: {e.message[:120]}")
+
+    if generated is None:
+        with tempfile.TemporaryDirectory(dir=config.OUTPUT_DIR) as tmp:
+            cut_path = Path(tmp) / "cutout.png"
+            cut_path.write_bytes(cut_png.getvalue())
+            generated = await _run_chain(cut_path, attempts)
 
     low = False
     fallback_reason = None

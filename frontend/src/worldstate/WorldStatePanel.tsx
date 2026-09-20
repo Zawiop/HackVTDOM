@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError, generateImage, getWorldStates } from "../api/client";
+import type { SideView } from "../api/client";
 import MapillarySuggestions from "../photo/MapillarySuggestions";
 import type {
   GenerateImageResult,
@@ -13,7 +14,12 @@ interface Props {
   /** Its coordinate, for step 03's optional street-level imagery lookup. */
   lat?: number | null;
   lng?: number | null;
-  onGenerated?: (result: GenerateImageResult) => void;
+  /** The image result, plus any photos the user labelled as other sides of the
+   *  building — those drive multi-view reconstruction in the mesh step. */
+  onGenerated?: (
+    result: GenerateImageResult,
+    sideViews?: Partial<Record<SideView, File>>,
+  ) => void;
 }
 
 /**
@@ -26,6 +32,14 @@ interface Props {
  * treatment. The freeform field is the one place a user describes their own
  * change, and it *replaces* the preset for that single generation.
  */
+const SIDE_ORDER: SideView[] = ["back", "left", "right"];
+
+/** Extra photos map to back, then left, then right, skipping the front slot. */
+function defaultSide(index: number, frontIndex: number): SideView | "ignore" {
+  const rank = index > frontIndex ? index - 1 : index;
+  return SIDE_ORDER[rank] ?? "ignore";
+}
+
 export default function WorldStatePanel({
   address,
   lat = null,
@@ -36,6 +50,9 @@ export default function WorldStatePanel({
   const [chosen, setChosen] = useState<WorldState | null>(null);
   const [override, setOverride] = useState("");
   const [photos, setPhotos] = useState<File[]>([]);
+  // Which side of the building each extra photo shows. The first photo is the
+  // front; the rest default to back/left/right in order and can be changed.
+  const [sides, setSides] = useState<Record<number, SideView | "ignore">>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GenerateImageResult | null>(null);
@@ -71,7 +88,17 @@ export default function WorldStatePanel({
         controller.signal,
       );
       setResult(generated);
-      onGenerated?.(generated);
+
+      // Everything except the photo the backend chose as the front becomes a
+      // side view, so extra uploads improve the geometry rather than idling.
+      const frontIndex = generated.photoSelection?.chosenIndex ?? 0;
+      const views: Partial<Record<SideView, File>> = {};
+      photos.forEach((file, i) => {
+        if (i === frontIndex) return;
+        const side = sides[i] ?? defaultSide(i, frontIndex);
+        if (side !== "ignore" && !views[side]) views[side] = file;
+      });
+      onGenerated?.(generated, Object.keys(views).length ? views : undefined);
     } catch (err) {
       if (controller.signal.aborted) return;
       setError(err instanceof ApiError ? err.message : String(err));
@@ -140,10 +167,38 @@ export default function WorldStatePanel({
       </label>
 
       {photos.length > 1 && (
-        <p className="hint">
-          {photos.length} selected — the sharpest, best-exposed one is used.
-          They are not combined: the models take a single image.
-        </p>
+        <>
+          <p className="hint">
+            The sharpest photo becomes the front and is what gets redesigned.
+            Label the others and the mesh is reconstructed from every angle
+            instead of guessing the sides it never saw.
+          </p>
+          <ul className="side-views">
+            {photos.map((file, i) => (
+              <li key={`${file.name}-${i}`}>
+                <span className="mono-sm side-views-name">{file.name}</span>
+                <select
+                  value={sides[i] ?? defaultSide(i, 0)}
+                  onChange={(e) =>
+                    setSides((prev) => ({
+                      ...prev,
+                      [i]: e.target.value as SideView | "ignore",
+                    }))
+                  }
+                >
+                  <option value="back">back</option>
+                  <option value="left">left</option>
+                  <option value="right">right</option>
+                  <option value="ignore">ignore</option>
+                </select>
+              </li>
+            ))}
+          </ul>
+          <p className="hint">
+            Whichever photo scores best is used as the front, so its label is
+            ignored.
+          </p>
+        </>
       )}
 
       {/*

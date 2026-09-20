@@ -218,7 +218,22 @@ async def generate_mesh_route(request: Request):
         data = await _file_or_url(body, "image", "imageUrl")
         if data is None:
             return _error(400, "provide an 'image' file or an 'imageUrl'")
-        return await generate_mesh(data, width, depth, force=_truthy(body.get("force")))
+
+        # Optional side views. With any of them the mesh is reconstructed from
+        # every supplied angle instead of inferring the unseen sides from one
+        # photo; `image` is the front. Falls back to single-view on any failure.
+        extra_views: dict[str, bytes] = {}
+        for side in ("back", "left", "right"):
+            side_data = await _file_or_url(body, f"image_{side}", f"image{side.capitalize()}Url")
+            if side_data is not None:
+                extra_views[side] = side_data
+
+        return await generate_mesh(
+            data, width, depth,
+            force=_truthy(body.get("force")),
+            extra_views=extra_views or None,
+            world_state=(str(body.get("worldState")) if body.get("worldState") else None),
+        )
     except BadImage as e:
         return _error(415, str(e))
     except (ValueError, httpx.HTTPError) as e:

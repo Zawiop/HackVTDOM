@@ -331,3 +331,21 @@ input[type="range"] { flex: 1; accent-color: var(--sn-accent); padding: 0; }
   border-color: var(--sn-danger);
   background: color-mix(in srgb, var(--sn-danger) 16%, transparent);
 }
+
+/* Labelling extra photos as sides of the building (multi-view input). */
+.side-views { list-style: none; margin: 4px 0; padding: 0; display: grid; gap: 4px; }
+.side-views li { display: flex; align-items: center; gap: 6px; }
+.side-views-name {
+  flex: 1; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.panel .side-views select {
+  flex: 0 0 auto;
+  font-family: var(--sn-mono);
+  font-size: 11px;
+  padding: 2px 4px;
+  background: var(--sn-bg);
+  color: var(--sn-text);
+  border: 1px solid var(--sn-border);
+  border-radius: 3px;
+}

@@ -31,6 +31,10 @@ SOURCE_CONVENTIONS = {
     "triposr-local": {"up": "+Z", "front": "+X", "units": "normalized"},
     # Our own procedural stand-in (assets/placeholder.glb), authored in glTF convention.
     "placeholder": {"up": "+Y", "front": "+Z", "units": "normalized"},
+    # Hunyuan3D-2mv exports glTF-standard axes with the `mv_image_front` view facing +Z,
+    # confirmed by rendering its output against a ground plane. Unit-normalized like the
+    # others: its bounds come back at roughly [-1, 1], so it is fitted to the footprint.
+    "hunyuan3d-mv": {"up": "+Y", "front": "+Z", "units": "normalized"},
 }
 # Anything else is assumed to follow the glTF 2.0 spec defaults.
 DEFAULT_CONVENTION = {"up": "+Y", "front": "+Z", "units": "meters"}
