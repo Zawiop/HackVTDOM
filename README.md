@@ -13,6 +13,12 @@ Turn a real building into its "Scorched Nebraska" post-apocalyptic version, then
 5. The mesh is geocoded, matched to the real building footprint, and placed on the map with correct position, scale, and rotation
 6. Every generated building persists on a shared map, growing into a collective "Scorched Nebraska" of campus
 
+## Deploying it
+
+See [DEPLOY.md](DEPLOY.md) — Vercel (frontend) + Render (backend), both free,
+about 10 minutes. `render.yaml` and `frontend/vercel.json` are already set up;
+a fresh deploy auto-seeds itself with the demo buildings on first boot.
+
 ## Tech stack
 
 Every external service below is free with no credit card — see `markdown_files/00-overview.md`

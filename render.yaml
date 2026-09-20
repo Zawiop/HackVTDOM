@@ -1,0 +1,54 @@
+# Render Blueprint for the FastAPI backend.
+#
+# Deploy: render.com -> New -> Blueprint -> pick this repo. Render reads this
+# file automatically. You'll be prompted in the dashboard for every env var
+# below that has no `value` — paste your real key there, never here (this
+# file is committed to git).
+#
+# After the first deploy, come back and fill in PUBLIC_BASE_URL and
+# CORS_ORIGINS with the real URLs Render/Vercel assigned you — see
+# DEPLOY.md for the exact two-pass sequence (they need each other's URL).
+services:
+  - type: web
+    name: scorched-nebraska-api
+    runtime: python
+    plan: free
+    region: oregon
+    rootDir: backend
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+
+      # --- Required: Nominatim's policy blocks generic user agents ---
+      - key: NOMINATIM_USER_AGENT
+        value: "ScorchedNebraskaVTHacks/1.0 (a-real-contact-email@example.com)"
+
+      # --- Recommended: without these, the app runs, but falls back to a per-instance
+      # SQLite file that a free Render instance wipes on every cold start. Steps
+      # 05-07 also degrade gracefully with no keys at all (see STATUS.md /
+      # local-restyle + the placeholder mesh), so the site stays usable either way. ---
+      - key: SUPABASE_URL
+      - key: SUPABASE_SECRET_KEY
+      - key: GEMINI_API_KEY
+      - key: HF_TOKEN
+      - key: MAPILLARY_ACCESS_TOKEN
+
+      # --- Fill in after your first deploy (see DEPLOY.md) ---
+      - key: PUBLIC_BASE_URL
+        value: "https://scorched-nebraska-api.onrender.com"
+      - key: CORS_ORIGINS
+        value: '["https://your-app.vercel.app"]'
+
+      # Skip the local (torch-based) mesh provider: it needs ~3 GB of ML
+      # dependencies this build intentionally does not install on Render.
+      # SF3D and TripoSR (both hosted on Hugging Face) still run fine.
+      - key: MESH_PROVIDERS
+        value: "triposr,sf3d"
+
+      # Off by default in prod: DEBUG_VIEWER mounts a debug page and is a
+      # local-dev-only tool (see backend/.env.example).
+      - key: DEBUG_VIEWER
+        value: "0"

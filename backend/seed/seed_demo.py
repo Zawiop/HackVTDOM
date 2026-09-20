@@ -77,14 +77,18 @@ def placement(lat, lng, rot=47.5, scale=1.0, confidence="auto-high"):
     )
 
 
-def real_placement(lat, lng, confidence=None):
+async def real_placement(lat, lng, confidence=None):
     """Run step 08 against the building actually at this coordinate.
 
     Returns None when Overpass is unreachable, so seeding still works offline —
     the caller falls back to its hardcoded transform.
+
+    Async, and does not call asyncio.run() itself: this is also invoked from
+    app.startup's auto-seed, which already runs inside FastAPI's event loop —
+    asyncio.run() cannot be nested inside one that is already running.
     """
     try:
-        fp = asyncio.run(footprint_service.lookup(lat, lng))
+        fp = await footprint_service.lookup(lat, lng)
     except footprint_service.FootprintUnavailable as exc:
         print(f"    (overpass unavailable: {exc!s:.60} — using fallback transform)")
         return None
@@ -128,12 +132,15 @@ def row(address, lat, lng, world_state, *, rot=47.5, scale=1.0,
     )
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--reset", action="store_true", help="delete the local sqlite db first")
-    args = ap.parse_args()
+async def run(reset: bool = False) -> int:
+    """The actual seeding logic, callable directly — no argv, no asyncio.run().
 
-    if args.reset and settings.store_backend == "sqlite" and settings.sqlite_path.exists():
+    Split out so app.startup can await this at server boot without going
+    through argparse (which would try to parse uvicorn's own command-line
+    arguments and crash) or asyncio.run() (which cannot nest inside the event
+    loop FastAPI is already running).
+    """
+    if reset and settings.store_backend == "sqlite" and settings.sqlite_path.exists():
         settings.sqlite_path.unlink()
         print(f"removed {settings.sqlite_path}")
 
@@ -146,7 +153,7 @@ def main() -> int:
 
     # --- pre-baked neighbours at real distances (step 10 reveal) ---
     for name, lat, lng, rot, scale in NEIGHBOURS:
-        computed = real_placement(lat, lng)
+        computed = await real_placement(lat, lng)
         g = store.save_generation(
             row(name, lat, lng, HERO_WORLD_STATE, rot=rot, scale=scale, placement_override=computed))
         d = haversine_meters(*BURRUSS, lat, lng)
@@ -159,7 +166,7 @@ def main() -> int:
     low = store.save_generation(
         row("McBryde Hall, Blacksburg, VA", lat, lng, HERO_WORLD_STATE,
             rot=15.0, scale=0.55, confidence="auto-low",
-            placement_override=real_placement(lat, lng, confidence="auto-low"))
+            placement_override=await real_placement(lat, lng, confidence="auto-low"))
     )
     print(f"  low-confidence  McBryde Hall     {haversine_meters(*BURRUSS, lat, lng):6.1f}m  "
           f"{low.confidence_state}  <- correction UI target")
@@ -167,7 +174,7 @@ def main() -> int:
     # --- outside every radius: proves the radius filter actually filters ---
     lat, lng = LANE_STADIUM
     store.save_generation(row("Lane Stadium, Blacksburg, VA", lat, lng, HERO_WORLD_STATE,
-                              rot=0.0, placement_override=real_placement(lat, lng)))
+                              rot=0.0, placement_override=await real_placement(lat, lng)))
     print(f"  far building    Lane Stadium     {haversine_meters(*BURRUSS, lat, lng):6.1f}m"
           f"  (outside 250m)")
 
@@ -179,6 +186,13 @@ def main() -> int:
     else:
         print("No Burruss row yet — run seed/prebake_demo.py for the hero building.")
     return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--reset", action="store_true", help="delete the local sqlite db first")
+    args = ap.parse_args()
+    return asyncio.run(run(reset=args.reset))
 
 
 if __name__ == "__main__":
