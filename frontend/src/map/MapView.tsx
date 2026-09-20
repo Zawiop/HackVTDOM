@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap, MapLayerMouseEvent } from "maplibre-gl";
 import { MapboxOverlay } from "@deck.gl/mapbox";
+import { createBuildingLighting } from "./lighting";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import {
@@ -83,7 +84,11 @@ export default function MapView({
       new maplibregl.NavigationControl({ visualizePitch: true }),
       "top-right",
     );
-    const overlay = new MapboxOverlay({ interleaved: false, layers: [] });
+    const overlay = new MapboxOverlay({
+      interleaved: false,
+      layers: [],
+      effects: [createBuildingLighting()],
+    });
     map.addControl(overlay);
     map.on("load", () => onMapReady?.(map));
     map.on("click", (e: MapLayerMouseEvent) => {
