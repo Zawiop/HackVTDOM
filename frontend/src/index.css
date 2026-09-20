@@ -321,3 +321,13 @@ input[type="range"] { flex: 1; accent-color: var(--sn-accent); padding: 0; }
   border-color: var(--sn-accent);
   background: color-mix(in srgb, var(--sn-accent) 14%, transparent);
 }
+
+/* Destructive action — visually distinct from the accent used for "go". */
+.panel button.danger {
+  color: var(--sn-danger);
+  border-color: color-mix(in srgb, var(--sn-danger) 55%, var(--sn-border));
+}
+.panel button.danger:hover:not(:disabled) {
+  border-color: var(--sn-danger);
+  background: color-mix(in srgb, var(--sn-danger) 16%, transparent);
+}

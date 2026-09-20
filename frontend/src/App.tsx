@@ -280,6 +280,7 @@ export default function App() {
           onPickHistory={onPickHistory}
           isPinned={isPinned}
           onTogglePin={togglePin}
+          onRemoved={refresh}
           satellite={satellite}
           onToggleSatellite={() => setSatellite((v) => !v)}
         />

@@ -35,7 +35,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 PLACEHOLDER_GLB = BACKEND_DIR / "assets" / "placeholder.glb"
 
 # Image edit (file 05). Providers are tried in order until one returns an image.
-IMAGE_PROVIDERS = _list("IMAGE_PROVIDERS", "gemini,kontext,hf-inference")
+IMAGE_PROVIDERS = _list("IMAGE_PROVIDERS", "gemini,kontext,hf-inference,local-restyle")
 GEMINI_IMAGE_MODEL = os.environ.get("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
 KONTEXT_SPACE = os.environ.get("KONTEXT_SPACE", "black-forest-labs/FLUX.1-Kontext-Dev")
 KONTEXT_GUIDANCE = _float("KONTEXT_GUIDANCE", 2.5)

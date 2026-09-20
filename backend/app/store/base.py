@@ -28,3 +28,11 @@ class GenerationStore(Protocol):
     def apply_correction(self, generation_id: str, correction: Correction) -> Generation:
         """Step 09: write corrected transform back, flip to manually-verified."""
         ...
+
+    def delete_generation(self, generation_id: str) -> None:
+        """Remove one row. Raises NotFoundError if it was not there."""
+        ...
+
+    def delete_by_address(self, address: str) -> int:
+        """Remove every generation for an address. Returns how many went."""
+        ...

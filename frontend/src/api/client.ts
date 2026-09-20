@@ -42,6 +42,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     console.error(`[api] ${path} -> ${response.status}: ${message}`);
     throw new ApiError(message, response.status, path);
   }
+  // 204 (a successful DELETE) has no body to parse.
+  if (response.status === 204 || response.headers?.get("content-length") === "0") {
+    return undefined as T;
+  }
   return response.json() as Promise<T>;
 }
 
@@ -207,5 +211,18 @@ export function lookupMapillary(lat: number, lng: number, signal?: AbortSignal) 
   return request<MapillaryLookup>(
     `/api/photo/mapillary?lat=${lat}&lng=${lng}`,
     { signal },
+  );
+}
+
+/** Step 11 — remove one generation (one World State of a building). */
+export function deleteGeneration(id: string, signal?: AbortSignal) {
+  return request<void>(`/api/generations/${id}`, { method: "DELETE", signal });
+}
+
+/** Step 11 — remove a building entirely, every World State it has. */
+export function deleteAddress(address: string, signal?: AbortSignal) {
+  return request<{ address: string; removed: number }>(
+    `/api/generations?address=${encodeURIComponent(address)}`,
+    { method: "DELETE", signal },
   );
 }

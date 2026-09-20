@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from ..models import Correction, Generation, GenerationCreate
 from ..store import GenerationStore, NotFoundError, PersistenceError, get_store
@@ -88,3 +88,37 @@ def correct_generation(
         raise _loud(e) from e
     log.info("correction applied to %s -> manually-verified", generation_id)
     return row
+
+
+@router.delete("/generations/{generation_id}", status_code=204)
+def delete_generation(
+    generation_id: str, store: GenerationStore = Depends(get_store)
+) -> Response:
+    """Remove one generation.
+
+    Deliberately per-row rather than per-address: a building usually has
+    several World States and the common case is dropping one of them, not
+    wiping the building. Use the address form below to clear it entirely.
+    """
+    try:
+        store.delete_generation(generation_id)
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=e.detail) from e
+    except PersistenceError as e:
+        raise _loud(e) from e
+    log.info("deleted generation %s", generation_id)
+    return Response(status_code=204)
+
+
+@router.delete("/generations", status_code=200)
+def delete_address(
+    address: str = Query(..., min_length=1),
+    store: GenerationStore = Depends(get_store),
+) -> dict:
+    """Remove every generation for an address — clears the building off the map."""
+    try:
+        removed = store.delete_by_address(address.strip())
+    except PersistenceError as e:
+        raise _loud(e) from e
+    log.info("deleted %d generation(s) for %r", removed, address)
+    return {"address": address, "removed": removed}

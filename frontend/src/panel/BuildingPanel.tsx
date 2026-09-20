@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import ConfidenceBadge from "./ConfidenceBadge";
-import { getHistory } from "../api/client";
+import { deleteAddress, deleteGeneration, getHistory } from "../api/client";
 import HistoryTimeline from "./HistoryTimeline";
 import CorrectionControls from "../correction/CorrectionControls";
 import type { Generation, PlacementOverrides } from "../types/contract";
@@ -40,6 +40,7 @@ export default function BuildingPanel({
   onToggleSatellite,
   isPinned,
   onTogglePin,
+  onRemoved,
 }: {
   row: Generation;
   onClose: () => void;
@@ -50,10 +51,34 @@ export default function BuildingPanel({
   onToggleSatellite: () => void;
   isPinned?: (row: Generation) => boolean;
   onTogglePin?: (row: Generation) => void;
+  /** Called after rows are removed so the map can drop them. */
+  onRemoved?: () => void;
 }) {
   const [history, setHistory] = useState<Generation[] | null>(null);
   const [historyError, setHistoryError] = useState<Error | null>(null);
   const [showCorrection, setShowCorrection] = useState(false);
+  // Two-step rather than a browser confirm(): removal cannot be undone, and a
+  // stray click on a demo machine should not quietly wipe a building.
+  const [confirming, setConfirming] = useState<"state" | "building" | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState<Error | null>(null);
+
+  async function remove(scope: "state" | "building") {
+    setRemoving(true);
+    setRemoveError(null);
+    try {
+      if (scope === "state") await deleteGeneration(row.id);
+      else await deleteAddress(row.address);
+      setConfirming(null);
+      onRemoved?.();
+      onClose();
+    } catch (e) {
+      console.error("[panel] remove failed", e);
+      setRemoveError(e instanceof Error ? e : new Error(String(e)));
+    } finally {
+      setRemoving(false);
+    }
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -72,6 +97,8 @@ export default function BuildingPanel({
   // A flagged building opens with its fix already expanded.
   useEffect(() => {
     setShowCorrection(row.confidence_state === "auto-low");
+    setConfirming(null);
+    setRemoveError(null);
   }, [row.id, row.confidence_state]);
 
   const p = row.placement ?? {};
@@ -136,6 +163,39 @@ export default function BuildingPanel({
           isPinned={isPinned}
           onTogglePin={onTogglePin}
         />
+      )}
+
+      <h3>remove</h3>
+      {removeError && (
+        <div className="mono-sm error-text">remove failed — {removeError.message}</div>
+      )}
+      {confirming ? (
+        <>
+          <p className="hint">
+            {confirming === "state"
+              ? `Remove the ${row.world_state ?? "current"} state of this building?`
+              : `Remove ${(row.address ?? "").split(",")[0]} and all ${history?.length ?? 1} of its states?`}{" "}
+            This cannot be undone.
+          </p>
+          <div className="btn-grid">
+            <button onClick={() => setConfirming(null)} disabled={removing}>cancel</button>
+            <button className="danger" onClick={() => remove(confirming)} disabled={removing}>
+              {removing ? "removing…" : "yes, remove"}
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="btn-grid">
+          <button onClick={() => setConfirming("state")} disabled={(history?.length ?? 1) < 2}>
+            this state
+          </button>
+          <button onClick={() => setConfirming("building")}>whole building</button>
+        </div>
+      )}
+      {(history?.length ?? 1) < 2 && (
+        <p className="hint">
+          Only one state here — removing it removes the building.
+        </p>
       )}
     </aside>
   );

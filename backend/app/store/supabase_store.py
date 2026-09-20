@@ -137,3 +137,19 @@ class SupabaseStore:
                 "apply_correction", f"update of {generation_id!r} returned no row"
             )
         return self._to_model(rows[0])
+
+    def delete_generation(self, generation_id: str) -> None:
+        self.get_generation(generation_id)  # raises NotFoundError if absent
+        self._request(
+            "delete_generation", "DELETE",
+            params={"id": f"eq.{generation_id}"},
+            headers={"Prefer": "return=minimal"},
+        )
+
+    def delete_by_address(self, address: str) -> int:
+        rows = self._request(
+            "delete_by_address", "DELETE",
+            params={"address": f"eq.{address}"},
+            headers={"Prefer": "return=representation"},
+        )
+        return len(rows)

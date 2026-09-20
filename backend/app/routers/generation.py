@@ -166,7 +166,9 @@ async def generate_image(request: Request):
 
     try:
         data = await _read_upload(photo)
-        result = await generate_redesigned_image(data, prompt, force=_truthy(form.get("force")))
+        result = await generate_redesigned_image(
+            data, prompt, force=_truthy(form.get("force")), world_state=world_state
+        )
         return {**result, "worldState": world_state, "promptSource": prompt_source}
     except BadImage as e:
         return _error(415, str(e))

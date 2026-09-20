@@ -89,3 +89,61 @@ def test_list_endpoint_feeds_the_map(client):
     rows = client.get("/api/generations").json()
     assert len(rows) == 2
     assert {"id", "lat", "lng", "placement", "mesh_url", "confidence_state"} <= set(rows[0])
+
+
+# --- removing buildings ---
+
+
+def test_delete_one_state_leaves_the_rest(client):
+    a = client.post("/api/generations", json=_payload(world_state="reclaimed")).json()
+    client.post("/api/generations", json=_payload(world_state="flooded"))
+
+    assert client.delete(f"/api/generations/{a['id']}").status_code == 204
+
+    remaining = client.get("/api/history", params={"address": "Burruss Hall"}).json()
+    assert [r["world_state"] for r in remaining] == ["flooded"]
+
+
+def test_deleting_the_same_row_twice_is_a_404_not_a_silent_success(client):
+    gid = client.post("/api/generations", json=_payload()).json()["id"]
+    assert client.delete(f"/api/generations/{gid}").status_code == 204
+    assert client.delete(f"/api/generations/{gid}").status_code == 404
+
+
+def test_delete_unknown_row_is_404(client):
+    r = client.delete("/api/generations/00000000-0000-0000-0000-000000000000")
+    assert r.status_code == 404
+
+
+def test_delete_address_removes_every_state_of_that_building(client):
+    for ws in ("reclaimed", "flooded", "scorched"):
+        client.post("/api/generations", json=_payload(world_state=ws))
+    client.post("/api/generations", json=_payload(address="Norris Hall"))
+
+    r = client.delete("/api/generations", params={"address": "Burruss Hall"})
+    assert r.status_code == 200
+    assert r.json()["removed"] == 3
+
+    rows = client.get("/api/generations").json()
+    assert [row["address"] for row in rows] == ["Norris Hall"]
+
+
+def test_delete_address_leaves_other_buildings_alone(client):
+    client.post("/api/generations", json=_payload(address="Burruss Hall"))
+    client.post("/api/generations", json=_payload(address="Norris Hall"))
+
+    client.delete("/api/generations", params={"address": "Burruss Hall"})
+
+    rows = client.get("/api/generations").json()
+    assert len(rows) == 1
+    assert rows[0]["address"] == "Norris Hall"
+
+
+def test_delete_address_that_has_nothing_reports_zero(client):
+    r = client.delete("/api/generations", params={"address": "Nowhere At All"})
+    assert r.status_code == 200
+    assert r.json()["removed"] == 0
+
+
+def test_delete_address_requires_an_address(client):
+    assert client.delete("/api/generations").status_code == 422

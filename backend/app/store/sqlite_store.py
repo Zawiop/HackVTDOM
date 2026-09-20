@@ -155,3 +155,19 @@ class SqliteStore:
         except sqlite3.Error as e:
             raise PersistenceError("apply_correction", str(e)) from e
         return self.get_generation(generation_id)
+
+    def delete_generation(self, generation_id: str) -> None:
+        self.get_generation(generation_id)  # raises NotFoundError if absent
+        try:
+            with self._conn() as c:
+                c.execute("delete from generations where id = ?", (generation_id,))
+        except sqlite3.Error as e:
+            raise PersistenceError("delete_generation", str(e)) from e
+
+    def delete_by_address(self, address: str) -> int:
+        try:
+            with self._conn() as c:
+                cur = c.execute("delete from generations where address = ?", (address,))
+                return cur.rowcount or 0
+        except sqlite3.Error as e:
+            raise PersistenceError("delete_by_address", str(e)) from e

@@ -13,6 +13,7 @@ The whole chain shares one IMAGE_TIMEOUT_S budget.
 import io
 import tempfile
 import time
+from contextvars import ContextVar
 from pathlib import Path
 
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -31,6 +32,9 @@ PROMPT_TEMPLATE = (
 )
 MAX_INPUT_SIDE = 1536
 CACHE_VERSION = "image-v1"
+
+
+_LOCAL_STATE: ContextVar[str | None] = ContextVar("world_state", default=None)
 
 
 class BadImage(ValueError):
@@ -146,11 +150,41 @@ def _hf_inference(jpeg: bytes, prompt: str, deadline: float) -> bytes:
     return out.getvalue()
 
 
-_PROVIDERS = {"gemini": _gemini, "kontext": _kontext, "hf-inference": _hf_inference}
+def _local_restyle(jpeg: bytes, prompt: str, deadline: float) -> bytes:
+    """Never fails, never calls out. See local_restyle for why this exists.
+
+    Deliberately last in the chain: it is a colour grade, not generation, and
+    should only ever run when every real provider has refused.
+    """
+    from .local_restyle import restyle
+
+    return restyle(jpeg, _LOCAL_STATE.get(), prompt)
 
 
-async def generate_redesigned_image(photo: bytes, world_state_prompt: str, *, force: bool = False) -> dict:
+_PROVIDERS = {
+    "gemini": _gemini,
+    "kontext": _kontext,
+    "hf-inference": _hf_inference,
+    "local-restyle": _local_restyle,
+}
+
+
+async def generate_redesigned_image(
+    photo: bytes,
+    world_state_prompt: str,
+    *,
+    force: bool = False,
+    world_state: str | None = None,
+) -> dict:
     t0 = time.monotonic()
+    token = _LOCAL_STATE.set(world_state)
+    try:
+        return await _generate(photo, world_state_prompt, force, t0)
+    finally:
+        _LOCAL_STATE.reset(token)
+
+
+async def _generate(photo: bytes, world_state_prompt: str, force: bool, t0: float) -> dict:
     jpeg = prepare_photo(photo)
     prompt = PROMPT_TEMPLATE.format(prompt=world_state_prompt.strip())
     key = storage.sha256(CACHE_VERSION, jpeg, prompt)
