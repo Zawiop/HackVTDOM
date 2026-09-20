@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import ConfidenceBadge from "./ConfidenceBadge";
-import { deleteAddress, deleteGeneration, getHistory } from "../api/client";
+import { deleteAddress, deleteGeneration, getHistory, hasAdminAccess } from "../api/client";
 import HistoryTimeline from "./HistoryTimeline";
 import CorrectionControls from "../correction/CorrectionControls";
 import type { Generation, PlacementOverrides } from "../types/contract";
@@ -165,38 +165,42 @@ export default function BuildingPanel({
         />
       )}
 
-      <h3>remove</h3>
-      {removeError && (
-        <div className="mono-sm error-text">remove failed — {removeError.message}</div>
-      )}
-      {confirming ? (
+      {hasAdminAccess && (
         <>
+          <h3>remove</h3>
+          {removeError && (
+            <div className="mono-sm error-text">remove failed — {removeError.message}</div>
+          )}
+          {confirming ? (
+            <>
+              <p className="hint">
+                {confirming === "state"
+                  ? (history?.length ?? 1) < 2
+                    ? `Remove the ${row.world_state ?? "current"} state? It is the only one, so the building goes with it.`
+                    : `Remove the ${row.world_state ?? "current"} state of this building? Its other ${(history?.length ?? 2) - 1} stay.`
+                  : `Remove ${(row.address ?? "").split(",")[0]} and all ${history?.length ?? 1} of its states?`}{" "}
+                This cannot be undone.
+              </p>
+              <div className="btn-grid">
+                <button onClick={() => setConfirming(null)} disabled={removing}>cancel</button>
+                <button className="danger" onClick={() => remove(confirming)} disabled={removing}>
+                  {removing ? "removing…" : "yes, remove"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="btn-grid">
+              <button onClick={() => setConfirming("state")}>this state</button>
+              <button onClick={() => setConfirming("building")}>whole building</button>
+            </div>
+          )}
           <p className="hint">
-            {confirming === "state"
-              ? (history?.length ?? 1) < 2
-                ? `Remove the ${row.world_state ?? "current"} state? It is the only one, so the building goes with it.`
-                : `Remove the ${row.world_state ?? "current"} state of this building? Its other ${(history?.length ?? 2) - 1} stay.`
-              : `Remove ${(row.address ?? "").split(",")[0]} and all ${history?.length ?? 1} of its states?`}{" "}
-            This cannot be undone.
+            {(history?.length ?? 1) < 2
+              ? "Only one state here, so removing it clears the building and its terrain."
+              : "Removing a state leaves the building's other states in place."}
           </p>
-          <div className="btn-grid">
-            <button onClick={() => setConfirming(null)} disabled={removing}>cancel</button>
-            <button className="danger" onClick={() => remove(confirming)} disabled={removing}>
-              {removing ? "removing…" : "yes, remove"}
-            </button>
-          </div>
         </>
-      ) : (
-        <div className="btn-grid">
-          <button onClick={() => setConfirming("state")}>this state</button>
-          <button onClick={() => setConfirming("building")}>whole building</button>
-        </div>
       )}
-      <p className="hint">
-        {(history?.length ?? 1) < 2
-          ? "Only one state here, so removing it clears the building and its terrain."
-          : "Removing a state leaves the building's other states in place."}
-      </p>
     </aside>
   );
 }

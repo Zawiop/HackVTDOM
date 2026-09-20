@@ -12,7 +12,13 @@ import EntryPanel from "./entry/EntryPanel";
 import WorldStatePanel from "./worldstate/WorldStatePanel";
 import type { LocatedPlace } from "./entry/EntryPanel";
 import { offsetMeters } from "./lib/geo";
-import { computePlacement, generateMesh, resetWorld, saveGeneration } from "./api/client";
+import {
+  computePlacement,
+  generateMesh,
+  hasAdminAccess,
+  resetWorld,
+  saveGeneration,
+} from "./api/client";
 import type { SideView } from "./api/client";
 import type {
   FootprintCandidate,
@@ -300,39 +306,43 @@ export default function App() {
           </>
         )}
 
-        <h3>world</h3>
-        {resetError && (
-          <div className="mono-sm error-text">reset failed — {resetError.message}</div>
-        )}
-        {confirmingReset ? (
+        {hasAdminAccess && (
           <>
-            <p className="hint">
-              Remove all {counts.total} generation
-              {counts.total === 1 ? "" : "s"} and every terrain with them? This
-              cannot be undone.
-            </p>
-            <div className="btn-grid">
-              <button onClick={() => setConfirmingReset(false)} disabled={resetting}>
-                cancel
-              </button>
-              <button className="danger" onClick={doResetWorld} disabled={resetting}>
-                {resetting ? "clearing…" : "yes, clear it"}
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <button
-              className="danger full-width"
-              onClick={() => setConfirmingReset(true)}
-              disabled={counts.total === 0}
-            >
-              reset world
-            </button>
-            <p className="hint">
-              Clears every building. To drop just one, open it and use the
-              remove controls there.
-            </p>
+            <h3>world</h3>
+            {resetError && (
+              <div className="mono-sm error-text">reset failed — {resetError.message}</div>
+            )}
+            {confirmingReset ? (
+              <>
+                <p className="hint">
+                  Remove all {counts.total} generation
+                  {counts.total === 1 ? "" : "s"} and every terrain with them? This
+                  cannot be undone.
+                </p>
+                <div className="btn-grid">
+                  <button onClick={() => setConfirmingReset(false)} disabled={resetting}>
+                    cancel
+                  </button>
+                  <button className="danger" onClick={doResetWorld} disabled={resetting}>
+                    {resetting ? "clearing…" : "yes, clear it"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <button
+                  className="danger full-width"
+                  onClick={() => setConfirmingReset(true)}
+                  disabled={counts.total === 0}
+                >
+                  reset world
+                </button>
+                <p className="hint">
+                  Clears every building. To drop just one, open it and use the
+                  remove controls there.
+                </p>
+              </>
+            )}
           </>
         )}
 

@@ -29,10 +29,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import httpx                                                      # noqa: E402
+
 from app.config import settings                                  # noqa: E402
 from app.generation import storage                               # noqa: E402
 from app.models import GenerationCreate, Placement, ScoredRotation  # noqa: E402
 from app.services import footprint as footprint_service          # noqa: E402
+from app.services import mapillary                               # noqa: E402
 from app.services import placement as placement_service          # noqa: E402
 from app.services import worldstate                              # noqa: E402
 from app.store import build_store                                # noqa: E402
@@ -129,6 +132,36 @@ def publish(path: Path, kind: str) -> str:
     return url
 
 
+def publish_bytes(data: bytes, kind: str, ext: str) -> str:
+    _, url = storage.save_bytes(data, kind, ext)
+    return url
+
+
+async def find_real_photo(lat: float, lng: float) -> tuple[bytes, str] | None:
+    """A real street-level photo of this exact building, if Mapillary has one.
+
+    Six of the eight demo buildings previously reused Burruss's own photo as
+    their generation input — different meshes, but the same wrong building
+    texturing the "before" side of every one of them. This is why a --live
+    prebake now looks for the real thing first, per building, before falling
+    back to the shared photo.
+    """
+    result = await mapillary.fetch_mapillary_photos(
+        lat, lng, settings.mapillary_access_token or None
+    )
+    photos = result.get("photos") or []
+    if not photos:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+            r = await client.get(photos[0]["url"])
+            r.raise_for_status()
+            return r.content, "jpg"
+    except Exception as exc:
+        print(f"    could not download Mapillary photo ({str(exc)[:60]}) — using shared photo")
+        return None
+
+
 async def generate_live(photo: bytes, world_state: str, footprint) -> tuple[str, str, dict] | None:
     """Try the real providers. Returns (image_url, mesh_url, extents) or None."""
     from app.generation.image_edit import generate_redesigned_image
@@ -169,9 +202,19 @@ async def bake(entry: dict, live: bool) -> GenerationCreate:
     print(f"    footprint: {fp.selected.tags.get('name')} "
           f"{fp.selected.footprintWidthMeters} x {fp.selected.footprintDepthMeters} m")
 
+    source_photo_bytes = SOURCE_PHOTO.read_bytes()
+    source_photo_url = None
     produced = None
     if live:
-        produced = await generate_live(SOURCE_PHOTO.read_bytes(), entry["world_state"], fp.selected)
+        real_photo = await find_real_photo(entry["lat"], entry["lng"])
+        if real_photo:
+            data, ext = real_photo
+            source_photo_bytes = data
+            source_photo_url = publish_bytes(data, "photos", ext)
+            print(f"    real photo: {source_photo_url}")
+        else:
+            print("    no Mapillary coverage here — using the shared Burruss photo")
+        produced = await generate_live(source_photo_bytes, entry["world_state"], fp.selected)
 
     if produced:
         image_url, mesh_url, extents = produced
@@ -204,7 +247,7 @@ async def bake(entry: dict, live: bool) -> GenerationCreate:
         address=entry["address"],
         lat=entry["lat"],
         lng=entry["lng"],
-        source_photo=publish(SOURCE_PHOTO, "photos"),
+        source_photo=source_photo_url or publish(SOURCE_PHOTO, "photos"),
         artifact=image_url,
         mesh_url=mesh_url,
         world_state=entry["world_state"],

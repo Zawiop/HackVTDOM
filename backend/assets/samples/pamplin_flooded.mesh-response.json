@@ -1,114 +1,13 @@
 {
- "meshUrl": "http://localhost:8000/outputs/meshes/504e54295379b66de3352731.glb",
- "rawMeshUrl": "http://localhost:8000/outputs/meshes/raw/4b3a68893a53e965ccf76988.glb",
- "cutoutUrl": "http://localhost:8000/outputs/cutouts/6855592389aa049f48c55bbe.png",
- "confidence": "auto-high",
  "provider": "sf3d",
- "fallbackReason": null,
+ "confidence": "auto-low",
  "normalization": {
-  "source": "sf3d",
   "convention": "glTF +Y up; facade faces +Z; meters; origin at base-center (y=0 is ground)",
-  "upAxis": {
-   "from": "+Y",
-   "rotated": false
-  },
-  "front": {
-   "from": "-Z",
-   "yawDegrees": 180
-  },
-  "squareUpYawDegrees": 27.0,
-  "units": {
-   "source": "normalized (unitless)",
-   "method": "fit longest horizontal side to 79.94 m",
-   "scale": 83.7329
-  },
-  "pivot": "base-center",
   "extentsMeters": {
    "width": 79.94,
-   "depth": 32.69,
-   "height": 31.79
-  },
-  "footprint": {
-   "widthMeters": 79.94,
-   "depthMeters": 64.0,
-   "assumed": false
-  },
-  "removedFragments": 0,
-  "transform": [
-   [
-    -74.629112,
-    0.0,
-    -37.969544,
-    -0.634388
-   ],
-   [
-    0.0,
-    83.732853,
-    0.0,
-    16.460363
-   ],
-   [
-    37.969544,
-    0.0,
-    -74.629112,
-    -1.304626
-   ],
-   [
-    0.0,
-    0.0,
-    0.0,
-    1.0
-   ]
-  ],
-  "faces": 18256,
-  "confidence": "auto-high",
-  "warnings": []
+   "height": 58.11,
+   "depth": 61.8
+  }
  },
- "entrances": [
-  {
-   "id": 0,
-   "isMain": true,
-   "position": [
-    0.0,
-    0.0,
-    10.496
-   ],
-   "facing": [
-    0.0,
-    0.0,
-    1.0
-   ],
-   "widthMeters": 4.0,
-   "heightMeters": 5.6,
-   "score": null,
-   "imageBox": null,
-   "source": "default",
-   "confidence": "auto-low"
-  }
- ],
- "warnings": [
-  "entrance detection needs torch (pip install -r requirements-local-mesh.txt)"
- ],
- "attempts": [
-  {
-   "provider": "triposr",
-   "ok": false,
-   "error": "Space stabilityai/TripoSR is RUNTIME_ERROR",
-   "ms": null,
-   "round": 0,
-   "skipped": true,
-   "timeout": null
-  },
-  {
-   "provider": "sf3d",
-   "ok": true,
-   "error": null,
-   "ms": 1886,
-   "round": 0,
-   "skipped": null,
-   "timeout": null
-  }
- ],
- "cached": false,
- "elapsedMs": 12435
+ "meshUrl": "http://localhost:8000/outputs/meshes/d20e7548af03a9c525429cf8.glb"
 }

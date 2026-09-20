@@ -26,6 +26,13 @@ services:
       - key: NOMINATIM_USER_AGENT
         value: "ScorchedNebraskaVTHacks/1.0 (a-real-contact-email@example.com)"
 
+      # --- Required before this URL is shared publicly: without it, anyone who
+      # opens /docs can see DELETE /world's exact shape and wipe the demo with
+      # one curl command — the UI's confirm dialog is not a server-side control
+      # on its own. Generate any random string (openssl rand -hex 24) and use
+      # the SAME value as the frontend's VITE_ADMIN_TOKEN. ---
+      - key: ADMIN_TOKEN
+
       # --- Recommended: without these, the app runs, but falls back to a per-instance
       # SQLite file that a free Render instance wipes on every cold start. Steps
       # 05-07 also degrade gracefully with no keys at all (see STATUS.md /

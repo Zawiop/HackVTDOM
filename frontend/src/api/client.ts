@@ -18,6 +18,13 @@ import type {
 // Empty by default so requests go through Vite's /api proxy — no CORS in dev.
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
+// Matches the backend's ADMIN_TOKEN (see app/security.py). Unset in a public
+// build, which is also the signal the UI uses to hide destructive controls —
+// showing a "reset world" button that always 401s for every real visitor
+// would be worse than not showing one.
+const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN ?? "";
+export const hasAdminAccess = Boolean(ADMIN_TOKEN);
+
 export class ApiError extends Error {
   status: number;
   path: string;
@@ -249,16 +256,22 @@ export function lookupMapillary(lat: number, lng: number, signal?: AbortSignal) 
   );
 }
 
+const adminHeaders: Record<string, string> = ADMIN_TOKEN ? { "X-Admin-Token": ADMIN_TOKEN } : {};
+
 /** Step 11 — remove one generation (one World State of a building). */
 export function deleteGeneration(id: string, signal?: AbortSignal) {
-  return request<void>(`/api/generations/${id}`, { method: "DELETE", signal });
+  return request<void>(`/api/generations/${id}`, {
+    method: "DELETE",
+    headers: adminHeaders,
+    signal,
+  });
 }
 
 /** Step 11 — remove a building entirely, every World State it has. */
 export function deleteAddress(address: string, signal?: AbortSignal) {
   return request<{ address: string; removed: number }>(
     `/api/generations?address=${encodeURIComponent(address)}`,
-    { method: "DELETE", signal },
+    { method: "DELETE", headers: adminHeaders, signal },
   );
 }
 
@@ -266,6 +279,7 @@ export function deleteAddress(address: string, signal?: AbortSignal) {
 export function resetWorld(signal?: AbortSignal) {
   return request<{ removed: number }>("/api/world?confirm=yes", {
     method: "DELETE",
+    headers: adminHeaders,
     signal,
   });
 }

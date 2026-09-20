@@ -1,18 +1,30 @@
 # Real generation outputs to build against (steps 05-07)
 
-Real outputs from the live pipeline (2026-09-19), committed so steps 08-12 can be built and tested
-without calling the HF Spaces. Everything here came out of `/api/generate-image` and
-`/api/generate-mesh` unmodified. Input photo: `backend/tests/fixtures/burruss_hall.jpg`.
+Real outputs from the live pipeline, committed so steps 08-12 can be built, tested, and demoed
+without calling any external provider. Everything here came out of `/api/generate-image` and
+`/api/generate-mesh` unmodified.
+
+**Recaptured 2026-09-20** with a working `HF_TOKEN`: every building below now has its **own**
+real street-level photo (fetched live from Mapillary at its own coordinates by
+`seed/prebake_demo.py --live`), not a shared stand-in. The first capture (2026-09-19) used
+`tests/fixtures/burruss_hall.jpg` for all eight entries, including the six non-Burruss halls —
+functionally fine for exercising steps 08-12, but it meant six different building meshes were all
+textured from a photo of a seventh building. That is fixed now: run
+`seed/prebake_demo.py --live --reset` again any time to recapture against whatever the providers
+return that day; without `--live` it always falls back to these committed files.
 
 | File | What it is |
 | --- | --- |
-| `burruss_scorched.png` | `/api/generate-image` output, "scorched" prompt (FLUX.1 Kontext, 1264x816) |
-| `burruss_flooded.png` | `/api/generate-image` output, "flooded" prompt |
-| `burruss_scorched.glb`, `burruss_flooded.glb` | `/api/generate-mesh` output (SF3D + normalization), fitted to the real footprint below |
-| `*.mesh-response.json` | The exact JSON `/api/generate-mesh` returned for each (URLs point at localhost:8000) |
-| `hitt_flooded.glb` + `.mesh-response.json` | The same flooded image fitted to **Hitt Hall's** footprint (94.69 x 49.25 m), so step 10's Propagate has a real neighbour to reveal |
-| `norris_`, `pamplin_`, `hancock_`, `derring_`, `holden_flooded.glb` + `.mesh-response.json` | The same flooded image fitted to each of those halls' own OSM footprints, so Propagate reveals a real neighbourhood: Norris/Pamplin inside 100 m, all six inside 250 m. **Holden is the useful one** — step 08 flags it `auto-low` on its own ("best rotation only reaches 57% of the achievable fit"), which is what the step 09 correction UI demonstrates against. It was not planted; that is simply how its mesh fits its footprint |
+| `burruss_scorched.png`, `burruss_flooded.png` | `/api/generate-image` output (FLUX.1 Kontext), Burruss Hall's own photo |
+| `hitt_`, `norris_`, `pamplin_`, `hancock_`, `derring_`, `holden_flooded.png` | Same, each from that hall's own real Mapillary photo — six distinct buildings, six distinct source images |
+| `*.glb` | `/api/generate-mesh` output (SF3D + normalization) for the matching image, fitted to that building's own real OSM footprint |
+| `*.mesh-response.json` | `provider`, `confidence` and `normalization.extentsMeters` for the matching mesh (URLs point at localhost:8000) |
 | `burruss_footprint.json` | `POST /api/footprint {lat: 37.2288, lng: -80.4236}` → Burruss Hall, OSM relation 1074686, 101.88 x 70.79 m, bearing 137.07 |
+| `footprint_cache.seed.json` | A snapshot of the step 02 footprint cache for all demo coordinates, preloaded at boot (`app/startup.py`) so a fresh host never depends on Overpass answering at the wrong moment |
+
+Two of the eight are genuinely `auto-low`, not planted: **Pamplin** is near-square, so its two
+orientations score equally and step 08 correctly refuses to guess; **Holden**'s mesh only reaches
+63% of its achievable IoU fit. Both are exactly what step 09's correction UI exists to fix.
 
 ## Mesh convention (every mesh the backend returns)
 
@@ -32,14 +44,10 @@ Verified in a real deck.gl 9 + MapLibre render: upright, textured, grounded. At 
 **south**; in general the facade's compass bearing is `180 - yaw` (yaw rotates counter-clockwise
 seen from above). Mesh X (the facade's length) points east at yaw 0.
 
-Sample extents after normalization (from the response JSON):
-
-| Mesh | width (X) | depth (Z) | height (Y) |
-| --- | --- | --- | --- |
-| scorched | 101.88 | 37.57 | 56.34 |
-| flooded | 101.88 | 41.66 | 40.51 |
-
-Depth is the least reliable number: it's inferred from a single street-level photo.
+Extents after normalization (width/depth/height in meters — see each `*.mesh-response.json` for
+the exact numbers). Depth is the least reliable of the three: it's inferred from a single
+street-level photo, which is exactly why step 08's scale fit tolerates a shortfall there before
+flagging anything (see `app/services/placement.py`).
 
 ## Entrances
 
