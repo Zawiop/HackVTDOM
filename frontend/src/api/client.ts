@@ -256,15 +256,18 @@ export function deleteGeneration(id: string, signal?: AbortSignal) {
 
 /** Step 11 — remove a building entirely, every World State it has. */
 export function deleteAddress(address: string, signal?: AbortSignal) {
-  return request<{ address: string; removed: number }>(
+  return request<{ address: string; removed: number; undoable: boolean }>(
     `/api/generations?address=${encodeURIComponent(address)}`,
     { method: "DELETE", signal },
   );
 }
 
-/** Step 11 — empty the world. Every building, every state. Cannot be undone. */
+/**
+ * Step 11 — empty the world. `undoable` says whether the removed rows made it into the
+ * undo stash; when it is false the removal really is final, and the UI says so.
+ */
 export function resetWorld(signal?: AbortSignal) {
-  return request<{ removed: number }>("/api/world?confirm=yes", {
+  return request<{ removed: number; undoable: boolean }>("/api/world?confirm=yes", {
     method: "DELETE",
     signal,
   });

@@ -13,17 +13,22 @@ import zipfile
 
 import pytest
 
+from app.generation import config as gen_config
 from app.models import Generation
 from app.services import worldio
 from app.store import trash
 
 
 def _payload(address="Burruss Hall", world_state="scorched", confidence="auto-high"):
+    # Import re-points artifact URLs at this host's PUBLIC_BASE_URL (that is what makes a
+    # world portable), so build them from the same base or the round-trip compares a
+    # rewritten URL against a hardcoded one whenever PUBLIC_BASE_URL isn't the default.
+    base = gen_config.PUBLIC_BASE_URL
     return {
         "address": address, "lat": 37.2295, "lng": -80.4234,
-        "source_photo": "http://localhost:8000/outputs/photos/a.jpg",
-        "artifact": "http://localhost:8000/outputs/images/b.png",
-        "mesh_url": "http://localhost:8000/outputs/meshes/c.glb",
+        "source_photo": f"{base}/outputs/photos/a.jpg",
+        "artifact": f"{base}/outputs/images/b.png",
+        "mesh_url": f"{base}/outputs/meshes/c.glb",
         "world_state": world_state,
         "placement": {
             "rotationDegrees": 47.5, "scale": 1.83,

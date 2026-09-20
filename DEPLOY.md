@@ -53,6 +53,14 @@ deploy straight from your GitHub repo on every push to `main`.
    step 2 (no trailing slash).
 5. Deploy. Vercel assigns a URL like `https://your-app.vercel.app`. **Copy it.**
 
+`frontend/vercel.json` also contains `/api` and `/outputs` rewrites to the
+temporary Cloudflare tunnel used by the current live demo. They keep that
+deployment working when `VITE_API_BASE_URL` is unset. Once the Render URL is
+configured, the frontend sends API requests directly to Render and generated
+artifact URLs also come from Render, so the tunnel rewrites are no longer on
+the production request path. They can then be removed after the Render-backed
+deployment has been verified.
+
 ## 4. Close the loop
 
 The backend needs to know the frontend's real URL (for CORS) and its own

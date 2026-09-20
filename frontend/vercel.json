@@ -3,5 +3,16 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "installCommand": "npm install"
+  "installCommand": "npm install",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://backgrounds-polls-broadcasting-november.trycloudflare.com/api/:path*"
+    },
+    {
+      "source": "/outputs/:path*",
+      "destination": "https://backgrounds-polls-broadcasting-november.trycloudflare.com/outputs/:path*"
+    },
+    { "source": "/((?!api|outputs|assets|\\.well-known).*)", "destination": "/index.html" }
+  ]
 }
