@@ -38,6 +38,8 @@ export default function BuildingPanel({
   onPickHistory,
   satellite,
   onToggleSatellite,
+  isPinned,
+  onTogglePin,
 }: {
   row: Generation;
   onClose: () => void;
@@ -46,6 +48,8 @@ export default function BuildingPanel({
   onPickHistory: (row: Generation) => void;
   satellite: boolean;
   onToggleSatellite: () => void;
+  isPinned?: (row: Generation) => boolean;
+  onTogglePin?: (row: Generation) => void;
 }) {
   const [history, setHistory] = useState<Generation[] | null>(null);
   const [historyError, setHistoryError] = useState<Error | null>(null);
@@ -125,7 +129,13 @@ export default function BuildingPanel({
       {historyError ? (
         <div className="mono-sm error-text">history failed — {historyError.message}</div>
       ) : (
-        <HistoryTimeline history={history} currentId={row.id} onPick={onPickHistory} />
+        <HistoryTimeline
+          history={history}
+          currentId={row.id}
+          onPick={onPickHistory}
+          isPinned={isPinned}
+          onTogglePin={onTogglePin}
+        />
       )}
     </aside>
   );

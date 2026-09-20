@@ -43,6 +43,8 @@ interface Props {
   onMapReady?: (map: MapLibreMap) => void;
   /** Clicking empty map is the step 01 "click the map instead of typing" path. */
   onMapClick?: (lat: number, lng: number) => void;
+  /** Rows the user chose to leave showing; they win over "newest per address". */
+  pinnedIds?: ReadonlySet<string> | null;
 }
 
 /**
@@ -62,6 +64,7 @@ export default function MapView({
   showLabels = true,
   onMapReady,
   onMapClick,
+  pinnedIds = null,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -126,7 +129,7 @@ export default function MapView({
     const selected = rows.find((r) => r.id === selectedId) ?? null;
     // One mesh per address (the newest, or the selected one): two World States of the
     // same building sit at the same coordinate and would otherwise interpenetrate.
-    const shown = visibleRows(rows, selectedId);
+    const shown = visibleRows(rows, selectedId, pinnedIds);
     const layers = [
       buildRadiusLayer(
         propagate?.source ?? selected,
@@ -141,7 +144,7 @@ export default function MapView({
       showLabels ? buildLabelLayer(shown) : null,
     ].filter(Boolean);
     overlay.setProps({ layers });
-  }, [rows, selectedId, onSelect, roll, overrides, propagate, showLabels]);
+  }, [rows, selectedId, onSelect, roll, overrides, propagate, showLabels, pinnedIds]);
 
   // Satellite toggle: flip layer visibility rather than swapping the whole
   // style, so the deck.gl overlay and its loaded meshes survive the switch.

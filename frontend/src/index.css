@@ -304,3 +304,20 @@ input[type="range"] { flex: 1; accent-color: var(--sn-accent); padding: 0; }
   border-radius: 3px;
   background: #000;
 }
+
+/* Keep / on-map control in the history timeline. */
+.timeline-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.panel .timeline-actions button.pin {
+  padding: 1px 6px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  background: transparent;
+  color: var(--sn-muted);
+  border-color: var(--sn-border);
+}
+.panel .timeline-actions button.pin:hover { color: var(--sn-text); border-color: var(--sn-accent); }
+.panel .timeline-actions button.pin.pinned {
+  color: var(--sn-accent);
+  border-color: var(--sn-accent);
+  background: color-mix(in srgb, var(--sn-accent) 14%, transparent);
+}

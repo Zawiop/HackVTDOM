@@ -80,7 +80,26 @@ function heightAt(
   return { elevation, falloff, noise01 };
 }
 
-export function terrainCells(row: Generation): TerrainCell[] {
+/** How strongly `row`'s ground reaches a point, 0 outside its patch. */
+function influenceAt(row: Generation, lat: number, lng: number): number {
+  const [cLat, cLng] = centreOf(row);
+  const radius = buildingReach(row) * profileFor(row.world_state).reach;
+  const [mLat, mLng] = metersPerDegree(cLat);
+  const east = (lng - cLng) * mLng;
+  const north = (lat - cLat) * mLat;
+  return 1 - smoothstep(radius * 0.55, radius, Math.hypot(east, north));
+}
+
+/**
+ * Ground for one building, blended against its neighbours.
+ *
+ * `neighbours` are other buildings whose patches can reach this one. Without
+ * them, a flooded block next to a scorched block meets it at a hard seam —
+ * whichever drew last simply wins. Weighting each cell's colour by how far
+ * into each patch it sits makes the two states wash into each other the way
+ * the reference art does.
+ */
+export function terrainCells(row: Generation, neighbours: Generation[] = []): TerrainCell[] {
   const profile = profileFor(row.world_state);
   const [lat, lng] = centreOf(row);
   const radius = buildingReach(row) * profile.reach;
@@ -107,7 +126,22 @@ export function terrainCells(row: Generation): TerrainCell[] {
       // Low ground reads as hollow and wet, high ground as crest and dry.
       const body = mixColor(profile.low, profile.core, smoothstep(0.15, 0.6, noise01));
       const lit = mixColor(body, profile.high, smoothstep(0.55, 1, noise01));
-      const blended = mixColor(profile.edge, lit, falloff);
+      let blended = mixColor(profile.edge, lit, falloff);
+
+      // Wash into any neighbouring patch that reaches this cell.
+      if (neighbours.length) {
+        const cellLat = lat + north / mLat;
+        const cellLng = lng + east / mLng;
+        for (const other of neighbours) {
+          if (other.world_state === row.world_state) continue;
+          const theirs = influenceAt(other, cellLat, cellLng);
+          if (theirs <= 0.01) continue;
+          // Their share of this cell, relative to ours. Capped so a building
+          // never loses its own ground entirely to a louder neighbour.
+          const share = Math.min(0.5, (theirs / (theirs + falloff + 0.001)) * 0.8);
+          blended = mixColor(blended, profileFor(other.world_state).core, share);
+        }
+      }
 
       // A rotated pentagon tiles far less obviously than an axis-aligned square.
       const sides = 5;

@@ -27,21 +27,45 @@ import type { TerrainCell, TerrainFeature } from "./terrain";
  * each other. The other states are not lost: the click panel's history timeline lists
  * them, and picking one selects it, which brings it to the front here.
  */
+/**
+ * One row per address — two World States of the same building sit at the same
+ * coordinate and would otherwise interpenetrate.
+ *
+ * Which one wins, in order:
+ *   1. the row being inspected right now,
+ *   2. the row the user pinned for that address,
+ *   3. otherwise the newest.
+ *
+ * The pin is what makes a chosen state stick. Without it, picking "scorched"
+ * and then closing the panel silently reverted the building to whatever was
+ * generated last, and the choice looked like it had been thrown away.
+ */
 export function visibleRows(
   rows: Generation[],
   selectedId?: string | null,
+  pinnedIds?: ReadonlySet<string> | null,
 ): Generation[] {
-  const newest = new Map<string, Generation>();
+  const rank = (row: Generation): number => {
+    if (row.id === selectedId) return 3;
+    if (pinnedIds?.has(row.id)) return 2;
+    return 1;
+  };
+
+  const best = new Map<string, Generation>();
   for (const row of rows) {
     const key = row.address || row.id;
-    const current = newest.get(key);
-    if (!current || row.id === selectedId) {
-      newest.set(key, row);
-    } else if (current.id !== selectedId && (row.created_at ?? "") > (current.created_at ?? "")) {
-      newest.set(key, row);
+    const current = best.get(key);
+    if (!current) {
+      best.set(key, row);
+      continue;
+    }
+    const a = rank(row);
+    const b = rank(current);
+    if (a > b || (a === b && (row.created_at ?? "") > (current.created_at ?? ""))) {
+      best.set(key, row);
     }
   }
-  return [...newest.values()];
+  return [...best.values()];
 }
 
 /** [pitch, yaw, roll]. roll=90 lifts a Y-up glTF onto deck.gl's Z-up ground. */
@@ -195,7 +219,14 @@ export function buildConfidenceRingLayer(rows: Generation[], opts: LayerOpts = {
  * place, which is the opposite of the pitch.
  */
 export function buildTerrainLayers(rows: Generation[]) {
-  const cells: TerrainCell[] = rows.flatMap(terrainCells);
+  // Each patch is blended against the others so differing states wash together
+  // instead of meeting at a seam.
+  const cells: TerrainCell[] = rows.flatMap((row) =>
+    terrainCells(
+      row,
+      rows.filter((other) => other.id !== row.id),
+    ),
+  );
   const features: TerrainFeature[] = rows.flatMap(terrainFeatures);
 
   return [
@@ -209,6 +240,22 @@ export function buildTerrainLayers(rows: Generation[]) {
       filled: true,
       stroked: false,
       material: { ambient: 0.75, diffuse: 0.5, shininess: 8, specularColor: [40, 40, 40] },
+      pickable: false,
+    }),
+    // Extruded features shrink to nothing as you pull back, so debris and
+    // wreckage vanish at district zoom exactly when the wide shot needs texture.
+    // These dots hold a minimum pixel size and keep the ground reading as
+    // littered rather than bare; up close the real geometry dominates them.
+    new ScatterplotLayer<TerrainFeature>({
+      id: "world-state-feature-dots",
+      data: features,
+      getPosition: (d: TerrainFeature) => [d.position[0], d.position[1]],
+      getRadius: (d: TerrainFeature) => d.radius * 0.85,
+      getFillColor: (d: TerrainFeature) => d.color,
+      radiusUnits: "meters",
+      radiusMinPixels: 1.6,
+      stroked: false,
+      filled: true,
       pickable: false,
     }),
     new PolygonLayer<TerrainFeature>({

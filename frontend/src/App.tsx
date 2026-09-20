@@ -4,6 +4,7 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import MapView from "./map/MapView";
 import type { PropagateState } from "./map/MapView";
 import { useGenerations } from "./map/useGenerations";
+import { usePinnedStates } from "./map/usePinnedStates";
 import { UP_AXIS_ROLL } from "./map/layers";
 import BuildingPanel from "./panel/BuildingPanel";
 import PropagatePanel from "./propagate/PropagatePanel";
@@ -28,6 +29,7 @@ import type {
  */
 export default function App() {
   const { rows, error, loading, refresh, replaceRow } = useGenerations();
+  const { pinnedIds, pin, unpin, isPinned } = usePinnedStates(rows);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [overrides, setOverrides] = useState<PlacementOverrides | null>(null);
   const [propagate, setPropagate] = useState<PropagateState | null>(null);
@@ -52,6 +54,27 @@ export default function App() {
     setSelectedId(row?.id ?? null);
     setOverrides(null);
   }, []);
+
+  /**
+   * Picking a state from a building's history also leaves it on the building.
+   *
+   * Selecting alone only changed what the open panel showed, so closing the
+   * panel reverted the map to the newest generation and the choice looked
+   * discarded. Picking is the moment the user says "this is the one", so it
+   * pins too; the timeline's keep/on-map button can undo it.
+   */
+  const onPickHistory = useCallback(
+    (row: Generation) => {
+      pin(row);
+      onSelect(row);
+    },
+    [pin, onSelect],
+  );
+
+  const togglePin = useCallback(
+    (row: Generation) => (isPinned(row) ? unpin(row) : pin(row)),
+    [isPinned, pin, unpin],
+  );
 
   const closePanel = useCallback(() => {
     setSelectedId(null);
@@ -181,6 +204,7 @@ export default function App() {
 
       <MapView
         rows={rows}
+        pinnedIds={pinnedIds}
         selectedId={selectedId}
         onSelect={onSelect}
         roll={UP_AXIS_ROLL}
@@ -253,7 +277,9 @@ export default function App() {
           onClose={closePanel}
           onPreview={setOverrides}
           onSaved={onSaved}
-          onPickHistory={onSelect}
+          onPickHistory={onPickHistory}
+          isPinned={isPinned}
+          onTogglePin={togglePin}
           satellite={satellite}
           onToggleSatellite={() => setSatellite((v) => !v)}
         />
