@@ -36,3 +36,7 @@ class GenerationStore(Protocol):
     def delete_by_address(self, address: str) -> int:
         """Remove every generation for an address. Returns how many went."""
         ...
+
+    def delete_all(self) -> int:
+        """Empty the world. Returns how many rows went."""
+        ...

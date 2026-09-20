@@ -349,3 +349,5 @@ input[type="range"] { flex: 1; accent-color: var(--sn-accent); padding: 0; }
   border: 1px solid var(--sn-border);
   border-radius: 3px;
 }
+
+.panel button.full-width { width: 100%; }

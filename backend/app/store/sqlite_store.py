@@ -171,3 +171,11 @@ class SqliteStore:
                 return cur.rowcount or 0
         except sqlite3.Error as e:
             raise PersistenceError("delete_by_address", str(e)) from e
+
+    def delete_all(self) -> int:
+        try:
+            with self._conn() as c:
+                cur = c.execute("delete from generations")
+                return cur.rowcount or 0
+        except sqlite3.Error as e:
+            raise PersistenceError("delete_all", str(e)) from e

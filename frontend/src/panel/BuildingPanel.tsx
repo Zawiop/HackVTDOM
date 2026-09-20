@@ -173,7 +173,9 @@ export default function BuildingPanel({
         <>
           <p className="hint">
             {confirming === "state"
-              ? `Remove the ${row.world_state ?? "current"} state of this building?`
+              ? (history?.length ?? 1) < 2
+                ? `Remove the ${row.world_state ?? "current"} state? It is the only one, so the building goes with it.`
+                : `Remove the ${row.world_state ?? "current"} state of this building? Its other ${(history?.length ?? 2) - 1} stay.`
               : `Remove ${(row.address ?? "").split(",")[0]} and all ${history?.length ?? 1} of its states?`}{" "}
             This cannot be undone.
           </p>
@@ -186,17 +188,15 @@ export default function BuildingPanel({
         </>
       ) : (
         <div className="btn-grid">
-          <button onClick={() => setConfirming("state")} disabled={(history?.length ?? 1) < 2}>
-            this state
-          </button>
+          <button onClick={() => setConfirming("state")}>this state</button>
           <button onClick={() => setConfirming("building")}>whole building</button>
         </div>
       )}
-      {(history?.length ?? 1) < 2 && (
-        <p className="hint">
-          Only one state here — removing it removes the building.
-        </p>
-      )}
+      <p className="hint">
+        {(history?.length ?? 1) < 2
+          ? "Only one state here, so removing it clears the building and its terrain."
+          : "Removing a state leaves the building's other states in place."}
+      </p>
     </aside>
   );
 }

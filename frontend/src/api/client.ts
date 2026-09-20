@@ -253,3 +253,11 @@ export function deleteAddress(address: string, signal?: AbortSignal) {
     { method: "DELETE", signal },
   );
 }
+
+/** Step 11 — empty the world. Every building, every state. Cannot be undone. */
+export function resetWorld(signal?: AbortSignal) {
+  return request<{ removed: number }>("/api/world?confirm=yes", {
+    method: "DELETE",
+    signal,
+  });
+}

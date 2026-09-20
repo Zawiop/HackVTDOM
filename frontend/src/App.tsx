@@ -12,7 +12,7 @@ import EntryPanel from "./entry/EntryPanel";
 import WorldStatePanel from "./worldstate/WorldStatePanel";
 import type { LocatedPlace } from "./entry/EntryPanel";
 import { offsetMeters } from "./lib/geo";
-import { computePlacement, generateMesh, saveGeneration } from "./api/client";
+import { computePlacement, generateMesh, resetWorld, saveGeneration } from "./api/client";
 import type { SideView } from "./api/client";
 import type {
   FootprintCandidate,
@@ -76,6 +76,30 @@ export default function App() {
     (row: Generation) => (isPinned(row) ? unpin(row) : pin(row)),
     [isPinned, pin, unpin],
   );
+
+  // Two-step, like the per-building removal: this wipes every building and
+  // every state with nothing behind it, so a single stray click must not do it.
+  const [confirmingReset, setConfirmingReset] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState<Error | null>(null);
+
+  const doResetWorld = useCallback(async () => {
+    setResetting(true);
+    setResetError(null);
+    try {
+      await resetWorld();
+      setSelectedId(null);
+      setOverrides(null);
+      setPropagate(null);
+      setConfirmingReset(false);
+      await refresh();
+    } catch (e) {
+      console.error("[world] reset failed", e);
+      setResetError(e instanceof Error ? e : new Error(String(e)));
+    } finally {
+      setResetting(false);
+    }
+  }, [refresh]);
 
   const closePanel = useCallback(() => {
     setSelectedId(null);
@@ -273,6 +297,42 @@ export default function App() {
           <>
             <h3>world propagate</h3>
             <p className="hint">Select a building to spread its World State.</p>
+          </>
+        )}
+
+        <h3>world</h3>
+        {resetError && (
+          <div className="mono-sm error-text">reset failed — {resetError.message}</div>
+        )}
+        {confirmingReset ? (
+          <>
+            <p className="hint">
+              Remove all {counts.total} generation
+              {counts.total === 1 ? "" : "s"} and every terrain with them? This
+              cannot be undone.
+            </p>
+            <div className="btn-grid">
+              <button onClick={() => setConfirmingReset(false)} disabled={resetting}>
+                cancel
+              </button>
+              <button className="danger" onClick={doResetWorld} disabled={resetting}>
+                {resetting ? "clearing…" : "yes, clear it"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <button
+              className="danger full-width"
+              onClick={() => setConfirmingReset(true)}
+              disabled={counts.total === 0}
+            >
+              reset world
+            </button>
+            <p className="hint">
+              Clears every building. To drop just one, open it and use the
+              remove controls there.
+            </p>
           </>
         )}
 

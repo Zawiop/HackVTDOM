@@ -122,3 +122,24 @@ def delete_address(
         raise _loud(e) from e
     log.info("deleted %d generation(s) for %r", removed, address)
     return {"address": address, "removed": removed}
+
+
+@router.delete("/world", status_code=200)
+def reset_world(
+    confirm: str = Query(..., description="must be the literal string 'yes'"),
+    store: GenerationStore = Depends(get_store),
+) -> dict:
+    """Empty the world — every building, every World State.
+
+    Requires `confirm=yes` in the query string. This cannot be undone and there
+    is no per-row safety net behind it, so a bare DELETE on this path is
+    refused rather than trusted.
+    """
+    if confirm != "yes":
+        raise HTTPException(status_code=400, detail="pass confirm=yes to reset the world")
+    try:
+        removed = store.delete_all()
+    except PersistenceError as e:
+        raise _loud(e) from e
+    log.warning("world reset: removed %d generation(s)", removed)
+    return {"removed": removed}

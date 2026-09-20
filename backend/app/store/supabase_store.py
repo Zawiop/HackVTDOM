@@ -153,3 +153,12 @@ class SupabaseStore:
             headers={"Prefer": "return=representation"},
         )
         return len(rows)
+
+    def delete_all(self) -> int:
+        # PostgREST refuses an unfiltered DELETE, so match every row explicitly.
+        rows = self._request(
+            "delete_all", "DELETE",
+            params={"id": "not.is.null"},
+            headers={"Prefer": "return=representation"},
+        )
+        return len(rows)
