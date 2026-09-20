@@ -730,3 +730,141 @@ input[type="range"] { flex: 1; accent-color: var(--sn-accent); padding: 0; }
     width: auto;
   }
 }
+
+/* --- back to the landing page ------------------------------------------- */
+
+.brand-home {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  text-decoration: none;
+  color: inherit;
+}
+.brand-home h1 { margin: 0; transition: color 0.2s ease; }
+.brand-home-cue {
+  font-family: var(--sn-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--sn-muted);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+.brand-home:hover h1 { color: var(--sn-accent); }
+.brand-home:hover .brand-home-cue { opacity: 1; transform: none; }
+
+/* --- destructive controls ------------------------------------------------ */
+
+button.wide { width: 100%; }
+button.danger {
+  border-color: #6b2a20;
+  color: var(--sn-danger);
+}
+button.danger:hover:not(:disabled) {
+  border-color: var(--sn-danger);
+  background: rgba(217, 96, 59, 0.1);
+  color: #f0b39c;
+}
+
+/* --- photo source picker (step 03) --------------------------------------- */
+
+.photo-picker { display: grid; gap: 0.45rem; }
+
+.photo-picker-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem; }
+/* No camera to open: two choices, not three, and neither is "take a photo". */
+.photo-picker-actions.is-desktop { grid-template-columns: 1fr 1fr; }
+.photo-picker-actions .photo-source:first-child:nth-last-child(3) { grid-column: 1 / -1; }
+
+.photo-source {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  /* 44px is the smallest reliably tappable target on a phone. */
+  min-height: 44px;
+  padding: 0.5rem 0.6rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+}
+.photo-source svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.photo-source-primary {
+  background: #2a1a12;
+  border-color: var(--sn-accent);
+  color: var(--sn-accent);
+}
+.photo-source-primary:hover:not(:disabled) {
+  background: #3a2416;
+  box-shadow: 0 0 14px -4px var(--sn-accent);
+}
+
+.photo-thumbs {
+  list-style: none;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
+  gap: 0.35rem;
+}
+.photo-thumbs li { position: relative; }
+.photo-thumbs img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 1px solid var(--sn-border);
+  background: #000;
+}
+.photo-thumb-remove {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 20px;
+  height: 20px;
+  min-height: 0;
+  padding: 0;
+  line-height: 1;
+  border-radius: 50%;
+  background: var(--sn-panel);
+  border: 1px solid var(--sn-border);
+  font-size: 0.85rem;
+}
+.photo-thumb-remove:hover:not(:disabled) {
+  border-color: var(--sn-danger);
+  color: var(--sn-danger);
+}
+.photo-thumb-tag {
+  position: absolute;
+  left: 2px;
+  bottom: 2px;
+  padding: 0 4px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.72);
+  font-family: var(--sn-mono);
+  font-size: 0.52rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sn-accent);
+}
+
+.photo-rejected {
+  margin: 0.2rem 0 0;
+  padding-left: 1rem;
+  font-size: 0.72rem;
+  color: var(--sn-danger);
+}
+
+@media (max-width: 520px) {
+  .photo-picker-actions { grid-template-columns: 1fr; }
+  .photo-picker-actions .photo-source:first-child:nth-last-child(3) { grid-column: auto; }
+}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError, generateImage, getWorldStates } from "../api/client";
 import type { SideView } from "../api/client";
 import MapillarySuggestions from "../photo/MapillarySuggestions";
+import PhotoSourcePicker from "../photo/PhotoSourcePicker";
 import { spectrumIndex, swatchFor } from "./palette";
 import type {
   GenerateImageResult,
@@ -196,17 +197,13 @@ export default function WorldStatePanel({
         />
       </label>
 
-      <label className="ws-field">
-        <span className="hint">photo of the building (required)</span>
-        {/* The spec's line is "one or more photographs", so the input accepts many. */}
-        <input
-          type="file"
-          accept="image/*"
-          multiple
-          disabled={busy}
-          onChange={(e) => setPhotos(Array.from(e.target.files ?? []))}
-        />
-      </label>
+      {/*
+        Camera, photo library and file picker as three explicit choices. The
+        spec's line is "one or more photographs", and on a phone the most
+        direct route to one is the camera that is already pointed at the
+        building. See PhotoSourcePicker for why this is three inputs.
+      */}
+      <PhotoSourcePicker value={photos} onChange={setPhotos} disabled={busy} />
 
       {photos.length > 1 && (
         <>

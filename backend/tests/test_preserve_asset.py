@@ -8,6 +8,15 @@ from PIL import Image
 import pytest
 import trimesh
 
+# Same optional extra as test_footprint_asset: this module's CLI test shells out
+# to scripts/build_footprint_asset.py, which imports pyproj. Without the extra
+# that surfaces as a subprocess exit 1 rather than an import error, so the skip
+# has to be explicit.
+pytest.importorskip(
+    "pyproj",
+    reason="needs the footprint extra: pip install -r requirements-footprint.txt",
+)
+
 from app.generation.footprint_asset import restyle_existing_asset
 from app.generation.scorch_material import scorch_surface
 from app.services.worldstate import prompt_for

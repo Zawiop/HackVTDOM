@@ -43,6 +43,7 @@ export default function BuildingPanel({
   onRemoved,
   onCorrectionToggle,
   draggedPosition,
+  isMine = false,
 }: {
   row: Generation;
   onClose: () => void;
@@ -57,6 +58,11 @@ export default function BuildingPanel({
   onRemoved?: () => void;
   /** Tells the map whether dragging should move the building or pan. */
   onCorrectionToggle?: (open: boolean) => void;
+  /**
+   * Whether this browser generated this building. Gates "restore to original"
+   * so a visitor can undo their own work without undoing a stranger's.
+   */
+  isMine?: boolean;
   draggedPosition?: PlacementRecord["position"] | null;
 }) {
   const [history, setHistory] = useState<Generation[] | null>(null);
@@ -67,6 +73,30 @@ export default function BuildingPanel({
   const [confirming, setConfirming] = useState<"state" | "building" | null>(null);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<Error | null>(null);
+  const [restoring, setRestoring] = useState<"confirm" | "busy" | null>(null);
+  const [restoreError, setRestoreError] = useState<Error | null>(null);
+
+  /**
+   * Put the building back the way it was.
+   *
+   * Removing every generated state for an address is exactly that: with no
+   * rows left there is no mesh and no terrain scar, so the map falls back to
+   * the real building. It is the same endpoint as an admin "whole building"
+   * removal, offered under the name that describes what a visitor actually
+   * wants from it and only for buildings this browser made.
+   */
+  async function restoreToOriginal() {
+    setRestoring("busy");
+    setRestoreError(null);
+    try {
+      await deleteAddress(row.address);
+      onRemoved?.();
+      onClose();
+    } catch (e) {
+      setRestoreError(e instanceof Error ? e : new Error(String(e)));
+      setRestoring(null);
+    }
+  }
 
   async function remove(scope: "state" | "building") {
     setRemoving(true);
@@ -180,6 +210,45 @@ export default function BuildingPanel({
           isPinned={isPinned}
           onTogglePin={onTogglePin}
         />
+      )}
+
+      {isMine && (
+        <>
+          <h3>restore</h3>
+          {restoreError && (
+            <div className="mono-sm error-text">restore failed — {restoreError.message}</div>
+          )}
+          {restoring === "confirm" ? (
+            <>
+              <p className="hint">
+                Put {(row.address ?? "this building").split(",")[0]} back the way it
+                was? Its {history?.length ?? 1} generated state
+                {(history?.length ?? 1) === 1 ? "" : "s"} are removed and the real
+                building stands here again. This cannot be undone.
+              </p>
+              <div className="btn-grid">
+                <button onClick={() => setRestoring(null)}>cancel</button>
+                <button className="danger" onClick={restoreToOriginal}>
+                  yes, restore
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <button
+                className="wide"
+                onClick={() => setRestoring("confirm")}
+                disabled={restoring === "busy"}
+              >
+                {restoring === "busy" ? "restoring…" : "restore original building"}
+              </button>
+              <p className="hint">
+                Clears every world state you applied here and leaves the building
+                as it really is.
+              </p>
+            </>
+          )}
+        </>
       )}
 
       {hasAdminAccess && (

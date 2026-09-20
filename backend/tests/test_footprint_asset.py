@@ -5,7 +5,18 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 import pytest
-from shapely.geometry import Polygon, MultiPolygon
+
+# shapely is an optional extra (requirements-footprint.txt), not part of the
+# base install. Imported at module scope it turns a missing optional dependency
+# into a *collection* error, which aborts the whole run — so on a fresh clone
+# following the documented setup, none of the other tests execute either.
+# Skipping this module keeps the rest of the suite runnable.
+shapely_geometry = pytest.importorskip(
+    "shapely.geometry",
+    reason="needs the footprint extra: pip install -r requirements-footprint.txt",
+)
+Polygon = shapely_geometry.Polygon
+MultiPolygon = shapely_geometry.MultiPolygon
 
 from app.generation.footprint_asset import build_asset
 from app.generation.footprint_asset.geometry import prepare_footprint, estimate_height, select_facade

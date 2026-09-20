@@ -18,6 +18,9 @@ import PropagatePanel from "./propagate/PropagatePanel";
 import EntryPanel from "./entry/EntryPanel";
 import WorldStatePanel from "./worldstate/WorldStatePanel";
 import WorldPanel from "./world/WorldPanel";
+import MyWorldControls from "./world/MyWorldControls";
+import { useMyWorld } from "./world/useMyWorld";
+import { navigate } from "./site/router";
 import UndoBanner from "./world/UndoBanner";
 import { useUndo } from "./world/useUndo";
 import type { LocatedPlace } from "./entry/EntryPanel";
@@ -46,6 +49,9 @@ const INITIAL_URL = readInitialUrlState();
 export default function App() {
   const { rows, error, loading, refresh, replaceRow } = useGenerations();
   const { pinnedIds, pin, unpin, isPinned } = usePinnedStates(rows);
+  // Which buildings this browser made, so "delete my world" and "restore
+  // original" can act without reaching anyone else's work.
+  const myWorld = useMyWorld(rows);
   const [selectedId, setSelectedId] = useState<string | null>(INITIAL_URL.buildingId);
   const [overrides, setOverrides] = useState<PlacementOverrides | null>(null);
   const [propagate, setPropagate] = useState<PropagateState | null>(null);
@@ -228,6 +234,10 @@ export default function App() {
           },
         });
 
+        // Record it before the refresh so the restore controls are available
+        // the moment the building appears.
+        if (saved.id) myWorld.claim(saved.id);
+
         await refresh();
         setSelectedId(saved.id);
         setPipeline(
@@ -350,7 +360,18 @@ export default function App() {
 
       <aside className="panel panel-left">
         <header className="brand">
-          <h1>SCORCHED NEBRASKA</h1>
+          <a
+            className="brand-home"
+            href="/"
+            onClick={(e) => {
+              e.preventDefault();
+              navigate("home");
+            }}
+            title="Back to the Scorched Earth homepage"
+          >
+            <h1>SCORCHED EARTH</h1>
+            <span className="brand-home-cue" aria-hidden="true">home</span>
+          </a>
           <div className="mono-sm muted">
             {loading
               ? "loading…"
@@ -404,6 +425,7 @@ export default function App() {
         </Section>
 
         <Section title="world" defaultOpen={rows.length === 0}>
+          <MyWorldControls world={myWorld} onChanged={onWorldChanged} />
           <WorldPanel count={counts.total} onChanged={onWorldChanged} />
         </Section>
 
@@ -453,6 +475,7 @@ export default function App() {
           onRemoved={onWorldChanged}
           onCorrectionToggle={setDragToPlace}
           draggedPosition={draggedPosition}
+          isMine={myWorld.isMine(selected)}
           satellite={satellite}
           onToggleSatellite={() => setSatellite((v) => !v)}
         />
