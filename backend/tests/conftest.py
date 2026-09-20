@@ -13,6 +13,32 @@ from app.store import get_store  # noqa: E402
 from app.store.sqlite_store import SqliteStore  # noqa: E402
 
 
+def pytest_configure(config):  # noqa: ARG001
+    """Point the process-wide store at a throwaway file before anything imports.
+
+    Most tests take the isolated `store` fixture below, but two modules build a
+    TestClient at import time without overriding the dependency, so a route
+    reached through one of them runs against whatever `get_store()` returns.
+    That was survivable when the worst a route could do was insert a row; it is
+    not now that `DELETE /api/world` exists — the suite would be one stray
+    request away from emptying someone's actual world.
+
+    This has to run in `pytest_configure` rather than a session fixture:
+    collection imports the test modules first, and by the time a fixture runs
+    the store can already be built and cached against the real path.
+    """
+    import os
+    import tempfile
+
+    from app import config as app_config
+    from app import store as app_store
+
+    path = Path(tempfile.mkdtemp(prefix="scorched-tests-")) / "test-session.db"
+    os.environ["SN_SQLITE_PATH"] = str(path)
+    app_config.get_settings.cache_clear()
+    app_store.get_store.cache_clear()
+
+
 @pytest.fixture
 def store(tmp_path) -> SqliteStore:
     """A clean SQLite store per test — same schema/semantics as the Supabase one."""

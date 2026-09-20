@@ -32,12 +32,14 @@ interface Props {
  * treatment. The freeform field is the one place a user describes their own
  * change, and it *replaces* the preset for that single generation.
  */
+type ViewSlot = "front" | SideView | "ignore";
+
 const SIDE_ORDER: SideView[] = ["back", "left", "right"];
 
-/** Extra photos map to back, then left, then right, skipping the front slot. */
-function defaultSide(index: number, frontIndex: number): SideView | "ignore" {
-  const rank = index > frontIndex ? index - 1 : index;
-  return SIDE_ORDER[rank] ?? "ignore";
+/** First photo is the front; the rest take back, left, right, then are ignored. */
+function defaultSlot(index: number): ViewSlot {
+  if (index === 0) return "front";
+  return SIDE_ORDER[index - 1] ?? "ignore";
 }
 
 export default function WorldStatePanel({
@@ -52,7 +54,28 @@ export default function WorldStatePanel({
   const [photos, setPhotos] = useState<File[]>([]);
   // Which side of the building each extra photo shows. The first photo is the
   // front; the rest default to back/left/right in order and can be changed.
-  const [sides, setSides] = useState<Record<number, SideView | "ignore">>({});
+  const [sides, setSides] = useState<Record<number, ViewSlot>>({});
+
+  const slotOf = (i: number): ViewSlot => sides[i] ?? defaultSlot(i);
+  const frontIndex = photos.findIndex((_, i) => slotOf(i) === "front");
+
+  /** Assign a slot, keeping front and each side unique across the photos. */
+  function assignSlot(index: number, slot: ViewSlot) {
+    setSides((prev) => {
+      const next: Record<number, ViewSlot> = { ...prev };
+      photos.forEach((_, i) => {
+        if (next[i] === undefined) next[i] = defaultSlot(i);
+      });
+      if (slot !== "ignore") {
+        // Only one photo can hold a given slot; whoever had it steps aside.
+        for (const [k, v] of Object.entries(next)) {
+          if (Number(k) !== index && v === slot) next[Number(k)] = "ignore";
+        }
+      }
+      next[index] = slot;
+      return next;
+    });
+  }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GenerateImageResult | null>(null);
@@ -84,19 +107,26 @@ export default function WorldStatePanel({
     try {
       const generated = await generateImage(
         photos,
-        { worldState: chosen ?? undefined, worldStatePrompt: override },
+        {
+          worldState: chosen ?? undefined,
+          worldStatePrompt: override,
+          // Only send it when the user actually named a front; otherwise let
+          // the backend score the set and pick the best photograph.
+          frontIndex: frontIndex >= 0 ? frontIndex : undefined,
+        },
         controller.signal,
       );
       setResult(generated);
 
       // Everything except the photo the backend chose as the front becomes a
       // side view, so extra uploads improve the geometry rather than idling.
-      const frontIndex = generated.photoSelection?.chosenIndex ?? 0;
+      const usedFront = generated.photoSelection?.chosenIndex ?? 0;
       const views: Partial<Record<SideView, File>> = {};
       photos.forEach((file, i) => {
-        if (i === frontIndex) return;
-        const side = sides[i] ?? defaultSide(i, frontIndex);
-        if (side !== "ignore" && !views[side]) views[side] = file;
+        if (i === usedFront) return; // whichever photo became the front view
+        const slot = slotOf(i);
+        if (slot === "front" || slot === "ignore") return;
+        if (!views[slot]) views[slot] = file;
       });
       onGenerated?.(generated, Object.keys(views).length ? views : undefined);
     } catch (err) {
@@ -169,23 +199,19 @@ export default function WorldStatePanel({
       {photos.length > 1 && (
         <>
           <p className="hint">
-            The sharpest photo becomes the front and is what gets redesigned.
-            Label the others and the mesh is reconstructed from every angle
-            instead of guessing the sides it never saw.
+            The front is the photo that gets redesigned. Label the others and
+            the mesh is reconstructed from every angle instead of guessing the
+            sides it never saw.
           </p>
           <ul className="side-views">
             {photos.map((file, i) => (
               <li key={`${file.name}-${i}`}>
                 <span className="mono-sm side-views-name">{file.name}</span>
                 <select
-                  value={sides[i] ?? defaultSide(i, 0)}
-                  onChange={(e) =>
-                    setSides((prev) => ({
-                      ...prev,
-                      [i]: e.target.value as SideView | "ignore",
-                    }))
-                  }
+                  value={slotOf(i)}
+                  onChange={(e) => assignSlot(i, e.target.value as ViewSlot)}
                 >
+                  <option value="front">front</option>
                   <option value="back">back</option>
                   <option value="left">left</option>
                   <option value="right">right</option>
@@ -195,8 +221,9 @@ export default function WorldStatePanel({
             ))}
           </ul>
           <p className="hint">
-            Whichever photo scores best is used as the front, so its label is
-            ignored.
+            {frontIndex >= 0
+              ? "Only one photo can hold each slot; picking a slot frees it from whichever photo had it."
+              : "No front picked — the sharpest, best-exposed photo will be used."}
           </p>
         </>
       )}
@@ -208,7 +235,17 @@ export default function WorldStatePanel({
       <MapillarySuggestions
         lat={lat}
         lng={lng}
-        onPick={(file) => setPhotos([file])}
+        // Adds rather than replaces: several Mapillary frames of the same
+        // building are different angles of it, which is exactly what
+        // multi-view reconstruction wants. Picking the same one twice
+        // removes it again.
+        onPick={(file) =>
+          setPhotos((prev) =>
+            prev.some((f) => f.name === file.name)
+              ? prev.filter((f) => f.name !== file.name)
+              : [...prev, file],
+          )
+        }
       />
 
       <button type="button" className="primary" onClick={generate} disabled={!canGenerate}>
@@ -236,12 +273,14 @@ export default function WorldStatePanel({
           </div>
           {result.photoSelection && result.photoSelection.count > 1 && (
             <p className="hint">
-              Used photo {result.photoSelection.chosenIndex + 1} of{" "}
+              Front: photo {result.photoSelection.chosenIndex + 1} of{" "}
               {result.photoSelection.count}
               {result.photoSelection.chosenName
                 ? ` (${result.photoSelection.chosenName})`
-                : ""}{" "}
-              — sharpest of the set.
+                : ""}
+              {result.photoSelection.chosenByUser
+                ? " — your choice."
+                : " — sharpest of the set."}
             </p>
           )}
           <p className="mono-sm">

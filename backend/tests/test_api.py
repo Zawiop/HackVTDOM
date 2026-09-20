@@ -201,3 +201,18 @@ def test_a_freed_address_can_be_given_a_new_state(client):
     assert again.status_code == 201
     states = [r["world_state"] for r in client.get("/api/history", params={"address": "Burruss Hall"}).json()]
     assert states == ["flooded"]
+
+
+def test_the_suite_cannot_reach_the_real_database():
+    """The session fixture must actually redirect the process-wide store.
+
+    Two test modules build a TestClient without overriding the store
+    dependency, so a route reached through one of them runs against whatever
+    `get_store()` returns. With `DELETE /api/world` in the API, that has to not
+    be someone's real world.
+    """
+    from app.config import get_settings
+    from app.store import get_store
+
+    assert "local.db" not in str(get_settings().sqlite_path)
+    assert "local.db" not in str(get_store().health()["path"])

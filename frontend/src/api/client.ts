@@ -81,7 +81,12 @@ export function getWorldStates(signal?: AbortSignal) {
  */
 export function generateImage(
   photo: Blob | Blob[],
-  selection: { worldState?: WorldState; worldStatePrompt?: string },
+  selection: {
+    worldState?: WorldState;
+    worldStatePrompt?: string;
+    /** Which upload is the front view. Omit to let scoring decide. */
+    frontIndex?: number;
+  },
   signal?: AbortSignal,
 ) {
   const form = new FormData();
@@ -93,6 +98,9 @@ export function generateImage(
   if (selection.worldState) form.append("worldState", selection.worldState);
   if (selection.worldStatePrompt?.trim()) {
     form.append("worldStatePrompt", selection.worldStatePrompt.trim());
+  }
+  if (typeof selection.frontIndex === "number") {
+    form.append("frontIndex", String(selection.frontIndex));
   }
   // Empty headers so the browser sets the multipart boundary itself.
   return request<GenerateImageResult>("/api/generate-image", {
