@@ -33,7 +33,23 @@ export const BASE_STYLE: StyleSpecification = {
     },
   },
   layers: [
-    { id: OSM_LAYER_ID, type: "raster", source: "osm", minzoom: 0, maxzoom: 22 },
+    {
+      id: OSM_LAYER_ID,
+      type: "raster",
+      source: "osm",
+      minzoom: 0,
+      maxzoom: 22,
+      // Graded down deliberately. Stock OSM tiles are bright and cheerful, which
+      // fights a post-apocalyptic world and washes out the World State terrain
+      // drawn on top — a teal flood or an ochre dust field barely registers
+      // against full-saturation parkland green. Pulling saturation and highlights
+      // back turns the basemap into a substrate the states can read against.
+      paint: {
+        "raster-saturation": -0.42,
+        "raster-brightness-max": 0.84,
+        "raster-contrast": 0.1,
+      },
+    },
     {
       id: SATELLITE_LAYER_ID,
       type: "raster",
@@ -41,6 +57,7 @@ export const BASE_STYLE: StyleSpecification = {
       minzoom: 0,
       maxzoom: 22,
       layout: { visibility: "none" },
+      paint: { "raster-saturation": -0.2, "raster-contrast": 0.06 },
     },
   ],
 };

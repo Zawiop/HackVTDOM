@@ -4,6 +4,8 @@ import { GLTFLoader } from "@loaders.gl/gltf";
 
 import type { Generation, PlacementOverrides } from "../types/contract";
 import { enclosingRadiusMeters, footprintCorners } from "./footprintGeometry";
+import { terrainFlecks, terrainRings } from "./terrain";
+import type { TerrainFleck, TerrainRing } from "./terrain";
 
 /**
  * Step 12 layer construction.
@@ -181,6 +183,44 @@ export function buildConfidenceRingLayer(rows: Generation[], opts: LayerOpts = {
       getRadius: [selectedId],
     },
   });
+}
+
+/**
+ * The ground each building stands in, coloured by its World State.
+ *
+ * Drawn first, under everything: concentric organic patches that fade out into
+ * the untouched basemap, plus scattered debris/growth flecks. Without it a
+ * flooded building and a scorched one sit on identical street tiles and the
+ * World State only exists in the mesh texture — the map says nothing about the
+ * place, which is the opposite of the pitch.
+ */
+export function buildTerrainLayers(rows: Generation[]) {
+  const rings: TerrainRing[] = rows.flatMap(terrainRings);
+  const flecks: TerrainFleck[] = rows.flatMap((r) => terrainFlecks(r));
+
+  return [
+    new PolygonLayer<TerrainRing>({
+      id: "world-state-terrain",
+      data: rings,
+      getPolygon: (d: TerrainRing) => d.polygon,
+      getFillColor: (d: TerrainRing) => d.color,
+      stroked: false,
+      filled: true,
+      extruded: false,
+      pickable: false,
+    }),
+    new ScatterplotLayer<TerrainFleck>({
+      id: "world-state-flecks",
+      data: flecks,
+      getPosition: (d: TerrainFleck) => d.position,
+      getRadius: (d: TerrainFleck) => d.radius,
+      getFillColor: (d: TerrainFleck) => d.color,
+      radiusUnits: "meters",
+      stroked: false,
+      filled: true,
+      pickable: false,
+    }),
+  ];
 }
 
 /**

@@ -14,6 +14,7 @@ import {
 import {
   buildConfidenceRingLayer,
   buildGroundShadowLayers,
+  buildTerrainLayers,
   buildLabelLayer,
   buildPendingLayer,
   buildRadiusLayer,
@@ -131,7 +132,8 @@ export default function MapView({
         propagate?.source ?? selected,
         propagate?.active ? propagate.radiusMeters : null,
       ),
-      // Under the meshes: shadows first, then the buildings on top.
+      // Ground up: World State terrain, then contact shadows, then the buildings.
+      ...buildTerrainLayers(shown),
       ...buildGroundShadowLayers(shown),
       ...buildScenegraphLayers(shown, { onClick: onSelect, roll, selectedId, overrides }),
       buildConfidenceRingLayer(shown, { onClick: onSelect, selectedId, overrides }),
