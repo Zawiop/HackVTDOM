@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from ..models import Correction, Generation, GenerationCreate
 from ..security import require_admin
+from ..services import worldio
 from ..store import GenerationStore, NotFoundError, PersistenceError, get_store, trash
 from .world import get_trash_path
 
@@ -42,7 +43,10 @@ def create_generation(
 def list_generations(store: GenerationStore = Depends(get_store)) -> list[Generation]:
     """Every row, for the step 12 ScenegraphLayer."""
     try:
-        return store.list_generations()
+        # A persisted row may have been seeded when this server still called
+        # itself localhost. Rebase local static URLs at the response boundary
+        # so the same database renders from Vercel or any future public host.
+        return worldio.absolutize(store.list_generations())
     except PersistenceError as e:
         raise _loud(e) from e
 
@@ -52,7 +56,7 @@ def get_generation(
     generation_id: str, store: GenerationStore = Depends(get_store)
 ) -> Generation:
     try:
-        return store.get_generation(generation_id)
+        return worldio.absolutize([store.get_generation(generation_id)])[0]
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=e.detail) from e
     except PersistenceError as e:
@@ -66,7 +70,7 @@ def get_history(
 ) -> list[Generation]:
     """The sequence for one address, oldest first: Reality -> Flooded -> Reclaimed."""
     try:
-        return store.get_history_for_address(address.strip())
+        return worldio.absolutize(store.get_history_for_address(address.strip()))
     except PersistenceError as e:
         raise _loud(e) from e
 
