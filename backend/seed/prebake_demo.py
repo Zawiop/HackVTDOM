@@ -12,6 +12,15 @@ critical path of a demo.
     ./.venv/bin/python seed/prebake_demo.py            # use the captured artifacts
     ./.venv/bin/python seed/prebake_demo.py --live     # regenerate through the providers
     ./.venv/bin/python seed/prebake_demo.py --reset    # clear the store first
+    ./.venv/bin/python seed/prebake_demo.py --force    # write even if already present
+
+This is the *generator*. The dataset it produces is committed as
+`assets/seed-world.json`, and that file is what actually seeds a world —
+`POST /api/world/seed` loads it, and `app/startup.py` auto-seeds from it on a
+cold start. So by default this skips any address already in the store rather
+than writing a second copy of it: `save_generation` mints a fresh id per call,
+and a duplicate row at the same coordinate hides the original behind it on the
+map. `--force` writes anyway.
 
 Without --live the script uses the real generation outputs committed under
 `assets/samples/` (see its README). They came out of the live pipeline unmodified, so
@@ -234,10 +243,29 @@ async def main_async(args) -> int:
     print(f"pre-baking into: {store.backend_name}"
           f"{' (live providers)' if args.live else ' (captured artifacts)'}\n")
 
-    for entry in DEMOS:
-        store.save_generation(await bake(entry, args.live))
+    # What is already there, as (address, world state). These rows are the same
+    # seven buildings `assets/seed-world.json` carries, so on an already-seeded
+    # store every one of them would be a duplicate — and the map draws the
+    # newest row per address, so the copy would hide the original.
+    force = getattr(args, "force", False)
+    present = set()
+    if not force:
+        present = {(r.address, r.world_state) for r in store.list_generations()}
 
-    print(f"\npre-baked {len(DEMOS)} rows. total in store: {len(store.list_generations())}")
+    written = skipped = 0
+    for entry in DEMOS:
+        key = (entry["address"], entry["world_state"])
+        if key in present:
+            print(f"  skip  {entry['address'].split(',')[0]:<16} {entry['world_state']:<10}"
+                  f" (already in the store — use --force to write anyway)")
+            skipped += 1
+            continue
+        store.save_generation(await bake(entry, args.live))
+        written += 1
+
+    print(f"\npre-baked {written} row(s)"
+          f"{f', skipped {skipped} already present' if skipped else ''}."
+          f" total in store: {len(store.list_generations())}")
     print("Artifacts are served from outputs/ — the demo no longer needs any provider.")
     return 0
 
@@ -246,6 +274,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--live", action="store_true", help="call the real providers first")
     ap.add_argument("--reset", action="store_true", help="delete the local sqlite db first")
+    ap.add_argument("--force", action="store_true",
+                    help="write rows even if that address/state is already in the store")
     return asyncio.run(main_async(ap.parse_args()))
 
 

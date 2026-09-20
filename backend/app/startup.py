@@ -7,16 +7,29 @@ empty map and, worse, a footprint lookup that depends on Overpass answering at
 exactly the wrong moment (every public Overpass mirror has gone down at some
 point during this project).
 
-This runs the identical code path `seed/prebake_demo.py` and `seed/seed_demo.py`
-run locally — it is not a separate "production" path, just called instead of
-typed. It is guarded by the store already having rows, so it is a no-op on a
-warm instance or a populated Supabase project, and it never overwrites or
-duplicates anything.
+Seeds from `assets/seed-world.json`, which is the one seed dataset — the same
+file `POST /api/world/seed` loads, through the same function. Booting used to
+run `seed/prebake_demo.py` and then `seed/seed_demo.py`, and those two overlap:
+prebake writes Pamplin Hall with its real mesh, seed_demo writes Pamplin Hall
+again with the grey placeholder. Since the map shows the newest row per
+address and seed_demo ran second, a cold-started instance served Pamplin as a
+placeholder box with its real mesh hidden underneath.
+
+The single path also fixes two quieter problems. `save_generation` mints a new
+id per call, so the old boot path duplicated its whole dataset if it ever ran
+twice against a non-empty store; `restore_generations` keeps the ids in the
+file and skips rows already present, so running it again is a no-op. And
+seed_demo computed placements through Overpass at boot — a network call on the
+startup path of a server whose whole reason for auto-seeding is that Overpass
+might be down. Everything in the JSON is already-computed step-08 output
+pointing at meshes committed to the repo.
+
+`seed/prebake_demo.py` and `seed/seed_demo.py` are still the tools that
+produced these artifacts, and still run by hand. They are no longer a second
+dataset that boots alongside this one.
 """
 
-import argparse
 import logging
-import sys
 from pathlib import Path
 
 log = logging.getLogger("scorched.startup")
@@ -24,16 +37,10 @@ log = logging.getLogger("scorched.startup")
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 FOOTPRINT_CACHE_SEED = BACKEND_DIR / "assets" / "samples" / "footprint_cache.seed.json"
 
-# `seed/` is a sibling of `app/`, not a package under it. The seed scripts add
-# this themselves when run as `python seed/foo.py`, but importing them as a
-# module (as we do here) needs it done first.
-if str(BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(BACKEND_DIR))
-
 
 async def ensure_demo_seeded() -> None:
     from .config import settings
-    from .services import cache
+    from .services import cache, worldio
     from .store import build_store
 
     store = build_store(settings)
@@ -47,7 +54,7 @@ async def ensure_demo_seeded() -> None:
         log.info("store already has %d row(s) — skipping auto-seed", len(existing))
         return
 
-    log.info("store is empty — auto-seeding the demo dataset")
+    log.info("store is empty — auto-seeding from the committed demo world")
 
     # A fresh disk means a fresh (empty) footprint cache too. Preloading the
     # committed snapshot means the demo buildings resolve from disk even if
@@ -56,10 +63,11 @@ async def ensure_demo_seeded() -> None:
         cache.seed_from(FOOTPRINT_CACHE_SEED)
 
     try:
-        from seed import prebake_demo, seed_demo
-
-        await prebake_demo.main_async(argparse.Namespace(live=False, reset=False))
-        await seed_demo.run(reset=False)
+        rows = worldio.load_seed_world()
+        # Rewritten onto this instance's PUBLIC_BASE_URL. The file stores every
+        # URL base-relative so the same bytes work on localhost and on Render.
+        written = store.restore_generations(worldio.absolutize(rows))
+        log.info("auto-seeded %d/%d row(s) from %s", written, len(rows), worldio.SEED_WORLD.name)
     except Exception:
         # A seeding hiccup must never take the whole API down — real address
         # lookups still work against an empty map.
