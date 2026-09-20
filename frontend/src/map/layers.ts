@@ -4,8 +4,8 @@ import { GLTFLoader } from "@loaders.gl/gltf";
 
 import type { Generation, PlacementOverrides } from "../types/contract";
 import { enclosingRadiusMeters, footprintCorners } from "./footprintGeometry";
-import { terrainFlecks, terrainRings } from "./terrain";
-import type { TerrainFleck, TerrainRing } from "./terrain";
+import { featurePolygon, terrainCells, terrainFeatures } from "./terrain";
+import type { TerrainCell, TerrainFeature } from "./terrain";
 
 /**
  * Step 12 layer construction.
@@ -195,29 +195,32 @@ export function buildConfidenceRingLayer(rows: Generation[], opts: LayerOpts = {
  * place, which is the opposite of the pitch.
  */
 export function buildTerrainLayers(rows: Generation[]) {
-  const rings: TerrainRing[] = rows.flatMap(terrainRings);
-  const flecks: TerrainFleck[] = rows.flatMap((r) => terrainFlecks(r));
+  const cells: TerrainCell[] = rows.flatMap(terrainCells);
+  const features: TerrainFeature[] = rows.flatMap(terrainFeatures);
 
   return [
-    new PolygonLayer<TerrainRing>({
-      id: "world-state-terrain",
-      data: rings,
-      getPolygon: (d: TerrainRing) => d.polygon,
-      getFillColor: (d: TerrainRing) => d.color,
-      stroked: false,
+    new PolygonLayer<TerrainCell>({
+      id: "world-state-ground",
+      data: cells,
+      getPolygon: (d: TerrainCell) => d.polygon,
+      getFillColor: (d: TerrainCell) => d.color,
+      getElevation: (d: TerrainCell) => d.elevation,
+      extruded: true,
       filled: true,
-      extruded: false,
+      stroked: false,
+      material: { ambient: 0.75, diffuse: 0.5, shininess: 8, specularColor: [40, 40, 40] },
       pickable: false,
     }),
-    new ScatterplotLayer<TerrainFleck>({
-      id: "world-state-flecks",
-      data: flecks,
-      getPosition: (d: TerrainFleck) => d.position,
-      getRadius: (d: TerrainFleck) => d.radius,
-      getFillColor: (d: TerrainFleck) => d.color,
-      radiusUnits: "meters",
-      stroked: false,
+    new PolygonLayer<TerrainFeature>({
+      id: "world-state-features",
+      data: features,
+      getPolygon: featurePolygon,
+      getFillColor: (d: TerrainFeature) => d.color,
+      getElevation: (d: TerrainFeature) => d.elevation,
+      extruded: true,
       filled: true,
+      stroked: false,
+      material: { ambient: 0.6, diffuse: 0.65, shininess: 12, specularColor: [50, 50, 50] },
       pickable: false,
     }),
   ];

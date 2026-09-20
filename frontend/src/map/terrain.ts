@@ -1,173 +1,267 @@
 import { metersPerDegree } from "../lib/geo";
-import type { Generation, WorldState } from "../types/contract";
+import type { Generation } from "../types/contract";
 import { footprintSize } from "./footprintGeometry";
+import { profileFor } from "./terrainProfiles";
+import type { FeatureKind, TerrainProfile } from "./terrainProfiles";
+import {
+  fractalNoise2D,
+  hashString,
+  mixColor,
+  seededRandom,
+  smoothstep,
+  withAlpha,
+} from "./terrainNoise";
+import type { Rgba } from "./terrainNoise";
+
+export { profileFor } from "./terrainProfiles";
+export type { Rgba } from "./terrainNoise";
 
 /**
- * The ground a building stands in, coloured by its World State.
+ * The ground a building stands in, built as real terrain rather than a flat
+ * colour wash: a field of extruded cells whose height comes from layered
+ * noise, plus features that belong to that World State — trees for reclaimed,
+ * dunes for buried, wreckage afloat on flooded, spires on petrified, burnt
+ * stumps on scorched.
  *
- * Buildings dropped onto raster street tiles read as models pasted on a map.
- * In the reference art the ground itself carries the state — a flooded block
- * sits in standing water, a scorched one in blown sand, a reclaimed one in
- * overgrowth. This draws that: concentric organic patches around each
- * building, fading out into the untouched basemap.
- *
- * Every patch is deterministic in the row id, so a building's ground looks the
- * same on every load and between machines — nothing here re-randomises on a
- * re-render, which would shimmer while panning.
+ * Everything is a pure function of the row id, so the same building always
+ * gets the same ground and nothing boils while the map pans.
  */
 
-export type Rgba = [number, number, number, number];
-
-interface StatePalette {
-  /** Ground closest to the building, where the state is strongest. */
-  core: Rgba;
-  /** Mid apron. */
-  mid: Rgba;
-  /** Outer falloff into the ordinary map. */
-  edge: Rgba;
-  /** Scatter dots: debris, vegetation, floating wreckage. */
-  fleck: Rgba;
-}
-
-/**
- * Sampled off the Scorched Nebraska reference art rather than invented:
- * ochre dust, still teal water, moss green, pale dune, grey ash.
- */
-const PALETTES: Record<string, StatePalette> = {
-  scorched: {
-    core: [168, 112, 48, 210],
-    mid: [196, 146, 82, 150],
-    edge: [214, 178, 126, 78],
-    fleck: [92, 60, 30, 170],
-  },
-  flooded: {
-    core: [28, 74, 82, 212],
-    mid: [44, 104, 104, 156],
-    edge: [86, 140, 132, 82],
-    fleck: [16, 44, 50, 165],
-  },
-  reclaimed: {
-    core: [58, 92, 44, 208],
-    mid: [92, 126, 60, 150],
-    edge: [136, 158, 96, 78],
-    fleck: [34, 58, 28, 170],
-  },
-  buried: {
-    core: [186, 158, 110, 214],
-    mid: [206, 182, 140, 156],
-    edge: [222, 205, 172, 84],
-    fleck: [150, 122, 82, 160],
-  },
-  petrified: {
-    core: [126, 124, 120, 208],
-    mid: [152, 150, 146, 148],
-    edge: [178, 176, 172, 76],
-    fleck: [92, 90, 88, 165],
-  },
-};
-
-const NEUTRAL: StatePalette = {
-  core: [120, 118, 112, 150],
-  mid: [146, 144, 138, 104],
-  edge: [170, 168, 162, 56],
-  fleck: [96, 94, 90, 130],
-};
-
-export function paletteFor(state: WorldState | null | undefined): StatePalette {
-  return (state && PALETTES[state]) || NEUTRAL;
-}
-
-/** Deterministic 0..1 sequence from a string — same ground on every load. */
-function seeded(seed: string): () => number {
-  let h = 2166136261;
-  for (let i = 0; i < seed.length; i++) {
-    h ^= seed.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return () => {
-    h ^= h << 13;
-    h ^= h >>> 17;
-    h ^= h << 5;
-    return ((h >>> 0) % 100000) / 100000;
-  };
-}
-
-/**
- * An organic closed ring around the building.
- *
- * A plain circle reads as a UI annotation, so each vertex radius is jittered
- * and the jitter is smoothed between neighbours to avoid a spiky star.
- */
-function blob(
-  lat: number,
-  lng: number,
-  radiusM: number,
-  rand: () => number,
-  points = 30,
-  jitter = 0.24,
-): [number, number][] {
-  const [mLat, mLng] = metersPerDegree(lat);
-  const raw = Array.from({ length: points }, () => 1 + (rand() - 0.5) * 2 * jitter);
-  return raw.map((_, i) => {
-    const prev = raw[(i - 1 + points) % points];
-    const next = raw[(i + 1) % points];
-    const smooth = (prev + raw[i] * 2 + next) / 4;
-    const r = radiusM * smooth;
-    const a = (i / points) * Math.PI * 2;
-    return [lng + (Math.cos(a) * r) / mLng, lat + (Math.sin(a) * r) / mLat];
-  });
-}
-
-export interface TerrainRing {
-  id: string;
+export interface TerrainCell {
   polygon: [number, number][];
+  elevation: number;
   color: Rgba;
 }
 
-/** Outer-to-inner rings, so later rings paint over earlier ones. */
-export function terrainRings(row: Generation): TerrainRing[] {
-  const lat = Number(row.placement?.position?.[0] ?? row.lat);
-  const lng = Number(row.placement?.position?.[1] ?? row.lng);
-  const [w, d] = footprintSize(row);
-  const base = 0.5 * Math.hypot(w, d);
-  const p = paletteFor(row.world_state);
-
-  return [
-    { id: `${row.id}-edge`, radius: base * 2.5, color: p.edge, jitter: 0.3 },
-    { id: `${row.id}-mid`, radius: base * 1.75, color: p.mid, jitter: 0.24 },
-    { id: `${row.id}-core`, radius: base * 1.22, color: p.core, jitter: 0.16 },
-  ].map(({ id, radius, color, jitter }) => ({
-    id,
-    // Re-seed per ring so the three outlines do not sit concentric and obvious.
-    polygon: blob(lat, lng, radius, seeded(id), 30, jitter),
-    color,
-  }));
-}
-
-export interface TerrainFleck {
-  position: [number, number];
+export interface TerrainFeature {
+  position: [number, number, number];
   radius: number;
+  elevation: number;
   color: Rgba;
+  /** Cylinder-ish for trunks and spires, blockier for dunes and wreckage. */
+  sides: number;
 }
 
-/** Debris and growth scattered through the patch, thickest near the building. */
-export function terrainFlecks(row: Generation, count = 26): TerrainFleck[] {
-  const lat = Number(row.placement?.position?.[0] ?? row.lat);
-  const lng = Number(row.placement?.position?.[1] ?? row.lng);
+/** Half the building's diagonal — the unit every terrain distance is in. */
+function buildingReach(row: Generation): number {
   const [w, d] = footprintSize(row);
-  const base = 0.5 * Math.hypot(w, d);
-  const { fleck } = paletteFor(row.world_state);
-  const [mLat, mLng] = metersPerDegree(lat);
-  const rand = seeded(`${row.id}-fleck`);
+  return 0.5 * Math.hypot(w, d);
+}
 
-  return Array.from({ length: count }, () => {
-    const a = rand() * Math.PI * 2;
-    // sqrt keeps them from clumping in the middle; 0.55 clears the building.
-    const r = base * (0.55 + Math.sqrt(rand()) * 1.75);
-    return {
-      position: [lng + (Math.cos(a) * r) / mLng, lat + (Math.sin(a) * r) / mLat],
-      radius: base * (0.03 + rand() * 0.07),
-      color: fleck,
-    } as TerrainFleck;
+function centreOf(row: Generation): [number, number] {
+  return [
+    Number(row.placement?.position?.[0] ?? row.lat),
+    Number(row.placement?.position?.[1] ?? row.lng),
+  ];
+}
+
+/**
+ * Height field in metres at a local offset from the patch centre.
+ *
+ * Falls to zero at the patch edge so terrain meets the untouched basemap
+ * without a visible step, and is damped right at the centre so the ground does
+ * not erupt through the building standing on it.
+ */
+function heightAt(
+  east: number,
+  north: number,
+  radius: number,
+  profile: TerrainProfile,
+  salt: number,
+): { elevation: number; falloff: number; noise01: number } {
+  const dist = Math.hypot(east, north);
+  const falloff = 1 - smoothstep(radius * 0.55, radius, dist);
+  const n = fractalNoise2D(east / profile.featureScale, north / profile.featureScale, salt);
+  const noise01 = (n + 1) / 2;
+  // Keep the middle calm: that is where the building is.
+  const clearance = smoothstep(0, radius * 0.42, dist);
+  const elevation =
+    profile.baseElevation * falloff + profile.relief * noise01 * falloff * clearance;
+  return { elevation, falloff, noise01 };
+}
+
+export function terrainCells(row: Generation): TerrainCell[] {
+  const profile = profileFor(row.world_state);
+  const [lat, lng] = centreOf(row);
+  const radius = buildingReach(row) * profile.reach;
+  const [mLat, mLng] = metersPerDegree(lat);
+  const salt = hashString(String(row.id));
+
+  // Enough cells to read as ground, few enough to stay cheap across a district.
+  const step = Math.max(6, radius / 10);
+  const cells: TerrainCell[] = [];
+  const jitter = seededRandom(`${row.id}-cells`);
+
+  for (let gx = -radius; gx <= radius; gx += step) {
+    for (let gy = -radius; gy <= radius; gy += step) {
+      // A strict lattice reads as a checkerboard however it is coloured, so each
+      // cell is displaced, resized and spun off the grid it came from.
+      const east = gx + (jitter() - 0.5) * step * 0.85;
+      const north = gy + (jitter() - 0.5) * step * 0.85;
+      const size = step * (0.78 + jitter() * 0.5);
+      const spin = jitter() * Math.PI * 2;
+      if (Math.hypot(east, north) > radius) continue;
+      const { elevation, falloff, noise01 } = heightAt(east, north, radius, profile, salt);
+      if (falloff <= 0.01) continue;
+
+      // Low ground reads as hollow and wet, high ground as crest and dry.
+      const body = mixColor(profile.low, profile.core, smoothstep(0.15, 0.6, noise01));
+      const lit = mixColor(body, profile.high, smoothstep(0.55, 1, noise01));
+      const blended = mixColor(profile.edge, lit, falloff);
+
+      // A rotated pentagon tiles far less obviously than an axis-aligned square.
+      const sides = 5;
+      const polygon = Array.from({ length: sides }, (_, i) => {
+        const a = spin + (i / sides) * Math.PI * 2;
+        return [
+          lng + (east + Math.cos(a) * size) / mLng,
+          lat + (north + Math.sin(a) * size) / mLat,
+        ] as [number, number];
+      });
+      cells.push({
+        polygon,
+        elevation: Math.max(0.05, elevation),
+        color: withAlpha(blended, 0.5 + falloff * 0.5),
+      });
+    }
+  }
+  return cells;
+}
+
+/** Trunk-and-canopy, spire, dune or wreckage, depending on the state. */
+function featureParts(
+  kind: FeatureKind,
+  profile: TerrainProfile,
+  base: [number, number, number],
+  radius: number,
+  height: number,
+): TerrainFeature[] {
+  const [lng, lat, z] = base;
+  switch (kind) {
+    case "tree":
+      // A canopy alone floats; the trunk is what makes it read as a tree.
+      return [
+        {
+          position: [lng, lat, z],
+          radius: Math.max(0.5, radius * 0.18),
+          elevation: height * 0.55,
+          color: [54, 42, 30, 245],
+          sides: 6,
+        },
+        {
+          position: [lng, lat, z + height * 0.5],
+          radius,
+          elevation: height * 0.62,
+          color: profile.featureColor,
+          sides: 7,
+        },
+      ];
+    case "spire":
+      return [
+        {
+          position: [lng, lat, z],
+          radius,
+          elevation: height,
+          color: profile.featureColor,
+          sides: 5,
+        },
+      ];
+    case "stump":
+      return [
+        {
+          position: [lng, lat, z],
+          radius,
+          elevation: height,
+          color: profile.featureColor,
+          sides: 6,
+        },
+      ];
+    case "dune":
+      // Wide and shallow, so it banks rather than stands.
+      return [
+        {
+          position: [lng, lat, z],
+          radius,
+          elevation: height,
+          color: profile.featureColor,
+          sides: 8,
+        },
+      ];
+    case "flotsam":
+    default:
+      return [
+        {
+          position: [lng, lat, z],
+          radius,
+          elevation: height,
+          color: profile.featureColor,
+          sides: 4,
+        },
+      ];
+  }
+}
+
+export function terrainFeatures(row: Generation): TerrainFeature[] {
+  const profile = profileFor(row.world_state);
+  const [lat, lng] = centreOf(row);
+  const reach = buildingReach(row);
+  const radius = reach * profile.reach;
+  const [mLat, mLng] = metersPerDegree(lat);
+  const salt = hashString(String(row.id));
+  const rand = seededRandom(`${row.id}-features`);
+
+  const out: TerrainFeature[] = [];
+  for (let i = 0; i < profile.featureCount; i++) {
+    const angle = rand() * Math.PI * 2;
+    // sqrt spreads them evenly by area; the 0.85 floor keeps them off the walls.
+    const dist = reach * (0.85 + Math.sqrt(rand()) * (profile.reach - 0.85));
+    const east = Math.cos(angle) * dist;
+    const north = Math.sin(angle) * dist;
+    const { elevation, falloff } = heightAt(east, north, radius, profile, salt);
+    if (falloff <= 0.12) continue; // nothing stranded out on the fade
+
+    const [rMin, rMax] = profile.featureRadius;
+    const [hMin, hMax] = profile.featureHeight;
+    const size = rMin + rand() * (rMax - rMin);
+    const height = (hMin + rand() * (hMax - hMin)) * (0.5 + falloff * 0.5);
+    const tint = rand();
+
+    const parts = featureParts(
+      profile.feature,
+      profile,
+      [lng + east / mLng, lat + north / mLat, elevation],
+      size,
+      height,
+    );
+    for (const part of parts) {
+      out.push({
+        ...part,
+        // Vary each one off the accent so a stand of trees is not one flat green.
+        color: mixColor(part.color, profile.featureAccent, tint * 0.6),
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * A feature as an extruded n-gon ring.
+ *
+ * ColumnLayer would be the obvious fit, but its `radius` is a layer-level prop
+ * with no per-object accessor, and these need to vary size individually — one
+ * layer per distinct radius is not a real option. Emitting the ring here keeps
+ * features and ground cells on the same PolygonLayer machinery.
+ */
+export function featurePolygon(feature: TerrainFeature): [number, number, number][] {
+  const [lng, lat, z] = feature.position;
+  const [mLat, mLng] = metersPerDegree(lat);
+  const sides = Math.max(3, feature.sides);
+  return Array.from({ length: sides }, (_, i) => {
+    const a = (i / sides) * Math.PI * 2;
+    return [
+      lng + (Math.cos(a) * feature.radius) / mLng,
+      lat + (Math.sin(a) * feature.radius) / mLat,
+      z,
+    ] as [number, number, number];
   });
 }
