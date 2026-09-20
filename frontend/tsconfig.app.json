@@ -14,12 +14,6 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* The map, panel and correction components (steps 09-12) are plain JSX.
-       They are compiled but not typechecked, so the TS build stays green while
-       the .ts contract files still get full checking. */
-    "allowJs": true,
-    "checkJs": false,
-
     /* Linting */
     "strict": true,
     "noUnusedLocals": true,

@@ -24,6 +24,7 @@ from ..generation.mesh_generate import generate_mesh, warm_cutout_model
 from ..generation.mesh_normalize import normalize_glb
 from ..generation.providers import cooling_down, hf_space_stage
 from ..models.contracts import GenerateImageResult, GenerateMeshResult, NormalizeMeshResult
+from ..services import worldstate
 
 router = APIRouter(tags=["generation"])
 
@@ -112,7 +113,14 @@ async def _file_or_url(body: dict, file_field: str, url_field: str) -> bytes | N
 
 @router.get("/generate/status")
 async def generation_status():
-    """Which providers are usable right now, and the live state of each HF Space."""
+    """This server's cooldown table, plus the live stage of each HF Space.
+
+    `ready` means only "not on local cooldown, so the next request will try it" —
+    NOT that the provider has quota. A provider that has never been called in this
+    process reads `ready` even when its quota is exhausted, and a Space can report
+    RUNNING while refusing every call because the account's ZeroGPU minutes are
+    spent. Treat a failed attempt, not this endpoint, as the truth.
+    """
     spaces = [config.KONTEXT_SPACE, config.TRIPOSR_SPACE, config.SF3D_SPACE]
     stages = await asyncio.gather(*(asyncio.to_thread(hf_space_stage, s) for s in spaces))
     return {
@@ -120,13 +128,21 @@ async def generation_status():
         "meshProviders": {p: cooling_down(p) or "ready" for p in config.MESH_PROVIDERS},
         "spaces": dict(zip(spaces, stages)),
         "placeholderUrl": f"{config.PUBLIC_BASE_URL}/assets/placeholder.glb",
+        "meaning": (
+            "'ready' = not on this server's cooldown list. It is not a quota check: "
+            "only an actual attempt tells you whether a provider will answer."
+        ),
     }
 
 
 @router.post("/generate-image", response_model=GenerateImageResult)
 @router.post("/generate/image", response_model=GenerateImageResult, include_in_schema=False)
 async def generate_image(request: Request):
-    """Step 05. multipart/form-data: `photo` (file), `worldStatePrompt` (text), optional `force`.
+    """Step 05. multipart/form-data: `photo` (file), plus the step 04 selection.
+
+    Send `worldState` (one of the five spectrum ids) for the preset path — its locked
+    description is resolved server-side so output stays consistent. `worldStatePrompt` is
+    the optional freeform override, which *replaces* the preset for that one generation.
 
     Fails loud (502, or 504 on timeout) with `retryable: true` and the per-provider attempts,
     so the UI can offer a retry instead of freezing.
@@ -134,18 +150,22 @@ async def generate_image(request: Request):
     try:
         form = await request.form()
     except Exception:
-        return _error(400, "expected multipart/form-data with 'photo' and 'worldStatePrompt'")
+        return _error(400, "expected multipart/form-data with 'photo' and a World State")
     photo = form.get("photo")
-    prompt = (form.get("worldStatePrompt") or "").strip()
     if not isinstance(photo, UploadFile):
         return _error(400, "missing 'photo' file field")
-    if not prompt:
-        return _error(400, "missing 'worldStatePrompt' text field")
-    if len(prompt) > 4000:
-        return _error(400, "'worldStatePrompt' is longer than 4000 characters")
+
+    try:
+        prompt, prompt_source, world_state = worldstate.resolve(
+            form.get("worldState"), form.get("worldStatePrompt")
+        )
+    except (worldstate.UnknownWorldState, worldstate.OverrideTooLong) as e:
+        return _error(400, str(e))
+
     try:
         data = await _read_upload(photo)
-        return await generate_redesigned_image(data, prompt, force=_truthy(form.get("force")))
+        result = await generate_redesigned_image(data, prompt, force=_truthy(form.get("force")))
+        return {**result, "worldState": world_state, "promptSource": prompt_source}
     except BadImage as e:
         return _error(415, str(e))
     except ValueError as e:

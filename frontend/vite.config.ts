@@ -5,6 +5,13 @@ import { defineConfig } from "vite";
 // means no CORS surprises when a teammate opens it from a different host.
 export default defineConfig({
   plugins: [react()],
+  // testing-library and jsdom are already in devDependencies; this is what makes
+  // component tests actually run alongside the existing pure-logic ones.
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: ["./src/__tests__/setup.ts"],
+  },
   server: {
     port: 5173,
     proxy: {

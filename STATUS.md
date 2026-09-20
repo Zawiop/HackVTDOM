@@ -1,9 +1,50 @@
 # STATUS — Scorched Nebraska
 
-Integrated 2026-09-19 from four branches: `ajeet/foundation-entry-pipeline`,
-`arrush/ai-generation`, `rishik/persistence-map`, and the input-layer/geometry
-branch that closed steps 03/04/08. Each owner's notes are kept below, unedited
-except where a later merge changed a fact.
+Integrated 2026-09-19 from three branches: `ajeet/foundation-entry-pipeline`,
+`arrush/ai-generation`, `rishik/persistence-map`. Each owner's notes are kept
+below, unedited except where the merge changed a fact.
+
+## Frontend consolidated to TypeScript (2026-09-19, latest change)
+
+The map half had been bridged into the TS app through a `MapShell.jsx` shim,
+which left the frontend half JavaScript and half TypeScript: two API clients
+(`lib/api.js` and `api/client.ts`), two stylesheets (`styles.css` and
+`index.css`), and `.jsx` components beside `.tsx` ones. That is now one
+TypeScript tree:
+
+- `MapShell.jsx` / `MapShell.d.ts` are gone; `App.tsx` composes the map and the
+  panels directly.
+- `lib/api.js` merged into `api/client.ts`, which now holds every endpoint —
+  geocode, footprint, generate-image, generate-mesh, and the persistence and
+  propagate calls. `ApiError` carries `status` and `path` so callers can branch.
+- `styles.css` merged into `index.css`; `main.tsx` imports one stylesheet.
+- All map, panel, correction and propagate components are `.tsx`; their tests
+  are `.ts`.
+- `types/contract.ts` matches the backend again: `Generation.id` and
+  `created_at` are non-null (every stored row has both), `placement` is
+  non-null, and `GenerationCreate`, `Correction`, `PropagateResponse` and
+  `PlacementOverrides` are declared.
+
+Two behaviours came with it:
+
+- **Clicking the map runs step 02 for that point**, which closes the
+  "click the map once step 12 lands" TODO. Clicking an *existing* building
+  selects it instead and deliberately does **not** fire an Overpass query —
+  Overpass is the most fragile dependency we have.
+- **Step 02's cached `neighbors` are passed straight into propagate**, so it
+  never re-fetches them.
+
+One CSS trap worth knowing: MapLibre's stylesheet sets
+`.maplibregl-map { position: relative }` on the same element as `.map-root`,
+and it is imported after `index.css`. An unqualified `.map-root` rule loses the
+cascade and the map collapses to **zero height** while still reporting full
+width — with no error anywhere. The rule is written `.app-shell .map-root` to
+win on specificity rather than depend on import order.
+
+Verified after the change: 77 backend tests, 19 frontend tests, clean
+`tsc -b && vite build`, and a browser pass over geocode, map-click footprint,
+3D placement, the correction loop and propagate.
+
 
 ## What actually works end to end
 
@@ -11,45 +52,196 @@ except where a later merge changed a fact.
 | --- | --- | --- |
 | 01 geocode | `GET /api/geocode?q=` | Done, verified live |
 | 02 footprint | `POST /api/footprint` | Done, verified live |
-| 03 photo upload | multipart on `/api/generate-image` | Done |
-| 03 photo auto-fetch | `GET /api/photo/mapillary` | Done, verified live |
-| 04 World State presets | `GET /api/worldstates`, `POST /api/worldstates/resolve` | Done |
+| 03 photo upload | multipart on `/api/generate-image` | Done (Mapillary auto-fetch not built) |
+| 04 World State presets | `GET /api/worldstates` | Done, locked server-side |
 | 05 image edit | `POST /api/generate-image` | Done (Gemini → Kontext fallback) |
 | 06 mesh | `POST /api/generate-mesh` | Done (→ placeholder fallback) |
 | 07 normalize | `POST /api/mesh/normalize` | Done |
-| 08 placement transform | `POST /api/placement` | Done, verified on real 02+07 output |
+| 08 placement transform | `POST /api/placement` | Done, IoU rotation search |
 | 09 correction | `PATCH /api/generations/{id}/correction` | Done |
 | 10 propagate | `POST /api/propagate` | Done (reads pre-baked rows) |
 | 11 persistence | `/api/generations`, `/api/history` | Done (Supabase or SQLite) |
 | 12 map render | frontend | Done |
 
-## The two gaps are closed
+## Step 04 — where the prompts live
 
-Both were filled on the input-layer/geometry branch. The full write-up is in the
-last section of this file; the short version:
+The five locked descriptions are in `app/services/worldstate.py` and nowhere else.
+`GET /api/worldstates` returns the spectrum for the picker — id, label, blurb and
+`spectrumPosition` — and **deliberately no prompt text**: handing the locked strings
+to the browser invites a client to send one straight back as a freeform override,
+which is exactly the inconsistency keeping them server-side prevents.
 
-**Step 04** now serves the five locked descriptions from
-`app/services/worldstate.py`. `GET /api/worldstates` returns labels and blurbs
-only — no route hands prompt text to the browser, and no route accepts it for the
-preset path. `POST /api/worldstates/resolve` turns a selection into the one
-string step 05 sends. A freeform override replaces the preset outright.
+`POST /api/generate-image` now takes `worldState` (one of the five ids) for the
+preset path and resolves the description itself. `worldStatePrompt` is the freeform
+override only, and it *replaces* the preset rather than appending to it — that
+replacement is the part that literally satisfies "describe desired changes with an
+AI prompt", since a user pressing a preset button is not the one describing
+anything. The response reports `worldState` and `promptSource`
+(`preset:<id>` or `override`) so the persisted row records which was used.
 
-**Step 08** now computes a real transform. Ground-truth tested on 32 real VT
-footprints (rotation recovered to 0.00°, scale to 1.0000, position within 7 cm)
-and verified against the real sample data in `assets/samples/`: a live
-`POST /api/footprint` → `POST /api/placement` → `POST /api/generations` chain
-gives Burruss Hall `scale 1.144`, `scaleXYZ [1.14, 1.14, 2.03]`, `z 0.000`,
-`auto-high`, with 18 neighbours checked from step 02's cache.
+The picker is `frontend/src/worldstate/WorldStatePanel.tsx`, framed as a
+Present ↔ Collapsed spectrum rather than a filter grid, and it carries step 03's
+mandatory multi-file photo input alongside it.
 
-That fixes the empty map described here previously: rows no longer save with
-`Placement`'s `scale: 1` default, so meshes render at building size instead of
-roughly one pixel.
+**Live generation is currently blocked by quota, not by code.** Both image
+providers are exhausted: the Gemini free tier reports `limit: 0` for
+`gemini-2.5-flash-image`, and the FLUX.1 Kontext Space has hit its ZeroGPU
+allowance. The route fails loud with 502, `retryable: true` and per-provider
+attempts, and the UI offers a retry. Budget this before judging — generate the
+demo images early and let them cache.
 
-One frontend change came with it. `layers.js` `scaleFor` now prefers
-`placement.scaleXYZ` when present and falls back to the scalar otherwise — both
-real sample meshes need it, because a mesh reconstructed from a single
-photograph under-guesses depth by roughly half and the uniform factor alone
-leaves the building visibly too shallow on its own footprint.
+## The demo is pre-baked and no longer needs any provider
+
+`seed/prebake_demo.py` runs the real pipeline end to end for the hero building —
+footprint (02), image (05), mesh (06+07), placement (08), persistence (11) — and
+writes the artifacts into `outputs/` so they are served from disk afterwards.
+
+```bash
+cd backend
+./.venv/bin/python seed/prebake_demo.py --reset   # hero building, real artifacts
+./.venv/bin/python seed/seed_demo.py              # neighbours + the flagged row
+```
+
+Order matters: prebake owns Burruss, seed owns the supporting cast. Seeding a
+placeholder Burruss at the same coordinate buries the real mesh under a 100 m
+grey box, which is what happened the first time.
+
+`--live` calls the providers and falls back to the captured artifact per step,
+reporting which is which. Without it the script uses the real outputs committed
+under `assets/samples/` — those came out of the live pipeline unmodified, so the
+rows are genuine end-to-end output, just not generated on this run.
+
+**Verified end to end:** Burruss Hall renders as the real textured SF3D mesh on
+its real OSM footprint at rotation 137.07 deg, scale 1.0001, with the before/after
+pair and a two-state history in the click panel. Step 08 coming out at scale ~1.0
+is an independent cross-check: step 07 sizes the mesh to the footprint's longest
+side, and `assets/samples/README.md` predicted "step 08's uniform scale should
+come out ~1" before step 08 existed.
+
+## About API keys
+
+**A new free Gemini key will not help.** Google returns `limit: 0` for
+`gemini-2.5-flash-image`, which is a quota allotment of zero on the free tier
+rather than a rate limit that resets — any other free key hits the same wall.
+Only a billing-enabled key changes it.
+
+**A new Hugging Face token will help.** The Kontext failure is a ZeroGPU *runs*
+limit, which is per-account and resets daily; a different account or HF PRO gets
+fresh quota. This is the cheaper fix, and mesh generation (SF3D) draws on the
+same pool.
+
+Swapping either is `.env` plus a restart — no code change. Note `PROVIDER_COOLDOWN_S`
+is 600 s and held in memory, so after a quota failure a provider is skipped for ten
+minutes; restart the server to clear it or you will see `skipped: true` and think
+the new key failed.
+
+## Step 13 skin, and four fixes from the error audit
+
+**Skin (13-ui-skin.md).** Warm dark panels on amber and moss, Chakra Petch on
+headings only, body left as a plain system sans so the 3D scene and the
+before/after imagery stay the centrepiece. The basemap is toned with a CSS filter
+on `.maplibregl-canvas` rather than a new tile provider — 12-map-render.md ruled
+out a MapTiler key and this costs no new API surface. Confidence language is in
+one component, `panel/ConfidenceBadge.tsx`: `auto-high` stays quiet, `auto-low`
+reads "needs review" in the warn colour and rings the mesh, `manually-verified`
+reads "✓ verified" in moss. That third state is the human-in-the-loop beat, and
+it has to be visible to be demonstrable.
+
+**Propagate now measures building-to-building, not centre-to-centre.** This is
+why the 50 m and 100 m tiers were empty: Burruss to Pamplin is 105 m between
+centroids but well under 50 m between walls, and "buildings within 50 m" plainly
+means the buildings. Polygons come from the step 02 cache only — never a live
+Overpass call, because Propagate has to stay an instant reveal — and any pair
+whose footprints are not both cached falls back to centroid distance. All three
+tiers now populate: 50 m reveals Pamplin, 100 m adds Williams, 250 m adds
+McBryde, and Lane Stadium stays out at every radius.
+
+**The footprint cache is written through to disk** (`.cache/footprints.json`,
+gitignored, atomic replace, corrupt file ignored rather than fatal). An in-memory
+cache died with the server, which meant the pre-baked buildings vanished exactly
+when Overpass was least likely to answer — every public endpoint was down at some
+point during this build.
+
+**Step 12 reads `scaleXYZ`.** Step 08 emits a non-uniform fit when proportions
+disagree past 30% and the renderer was throwing it away. Uniform is still the
+default; the stretch is used only when offered. `achievableIou` was also being
+computed and then silently dropped by the response model — it is in the contract now.
+
+**`/api/generate/status` no longer overclaims.** It reported kontext `ready`
+while the provider was out of quota, because it only reflects this server's
+cooldown table. It now says so, in the payload.
+
+## Step 08 — how the transform is computed
+
+`POST /api/placement` takes the chosen polygon and neighbours from step 02 plus
+the mesh's `normalization.extentsMeters` from step 07. No external calls; it never
+re-queries Overpass.
+
+**The mesh footprint is modelled as its normalized width x depth rectangle**, not
+its true base outline. TripoSR-class meshes are single-image reconstructions with
+noisy bases, so a rectangle is both steadier and enough to rank four rotations
+against a real polygon. It also means the IoU search cannot tell a facade from its
+back: the 0/180 and 90/270 candidates score identically by construction. That is
+reported in `rotation_note`, and picking a facade is left to the human in step 09,
+which is where the spec already puts it.
+
+**Rotation** scores the longest-edge bearing at +0/90/180/270. All four are
+returned with their IoU and their own best scale, because step 09 replays them as
+"try these alignments" buttons.
+
+**The fit test is relative, not absolute.** A rectangle can never cover an L-shaped
+or bridged building, so the achievable IoU is capped by how rectangular the
+footprint is. The response carries `rectangularity` (polygon area over its oriented
+bounding box) and the rotation passes when the best candidate reaches 80% of that
+ceiling. A flat IoU threshold flagged Torgersen Hall — whose bridge over Alumni Mall
+caps it at 0.42 — even though its best rotation was 96% of everything achievable.
+Below 35% rectangularity the shape is too irregular for a rectangle to orient at
+all, and it goes straight to a human.
+
+**Two thresholds were retuned against real captured output**, because the first
+versions flagged every genuine mesh. The rotation ceiling now accounts for the
+mesh's area as well as the footprint's shape: SF3D's Burruss mesh covers only 62%
+of the real polygon, so no rotation could ever reach the old ceiling and a
+correctly-oriented mesh was being flagged. And a depth shortfall under 65% is now
+a hint carrying `scaleXYZ` rather than a failure — single-photo reconstruction
+systematically under-reads depth, which step 07's own notes call the least
+reliable number, so flagging it made the flag meaningless. Past 65% it is still
+flagged, as a likely units problem.
+
+**Scale** is uniform, fitted with `min()` so the mesh stays inside the real
+footprint, which also keeps the collision test honest. When proportions disagree by
+more than 30% the uniform factor still populates `scale` — proportion-preserving is
+the stated preference — and a non-uniform `scaleXYZ` is offered alongside it.
+**Step 12 currently renders `scale` only; read `scaleXYZ` when it is not null.**
+
+**Collision uses real polygon intersection, not axis-aligned bounding boxes.**
+File 08 says bounding box, but axis-aligned boxes around two diagonal buildings
+overlap heavily even when the buildings do not touch — on this campus that flagged
+almost everything, including a spurious 45% "overlap" for Torgersen. The placed
+mesh is a convex rectangle, so the true intersection is one clip away.
+
+**Every sub-check is reported separately** in `checks`, and one flag is never
+overwritten by a later clean check. An `auto-low` footprint from step 02 stays
+`auto-low` through placement.
+
+Verified against real buildings: Burruss Hall resolves to 137.07 deg at 86% of its
+achievable fit; Torgersen Hall to 142.16 deg at 96%.
+
+## Demo data now uses real coordinates
+
+The seeder previously placed rows at synthetic offsets from Burruss. Once step 08
+started matching against real OSM footprints those offsets resolved to whichever
+building was actually there — the row labelled "Williams Hall" was sitting on
+**Patton Hall**, and both "Newman Library" and "McBryde Hall" landed on **Holden
+Hall**. The fixtures are now the real geocoded coordinates.
+
+**One consequence to know before the pitch:** VT buildings are more than 100 m
+apart centre-to-centre, so Propagate only reveals anything at the 250 m radius —
+the 50 m and 100 m tiers are honestly empty. The synthetic offsets had been hiding
+this. Either demo at 250 m, or change step 10 to measure the radius edge-to-edge
+rather than centroid-to-centroid, which is arguably the more correct reading of
+"buildings within 50 m" for buildings that are themselves 100 m wide. That needs
+footprint polygons per row, which the `generations` table does not store today.
 
 ## Smaller things worth knowing
 
@@ -562,50 +754,6 @@ included. OSM stays the default — no MapTiler key anywhere.
 
 ---
 
-## Merging with `ajeet/foundation-entry-pipeline` (checked 2026-09-19)
-
-I compared both branches. **The API contract matches — that was the big risk and
-it is retired.** Their `Generation` and `PlacementRecord` models use the same
-field names, the same `position: [lat, lng, z]` ordering, the same
-`confidence_state` values and the same `/api` prefix as mine. Their
-`routers/stubs.py` explicitly reserves `/generations` and `/propagate` for this
-work with a 501 and a pointer to files 10/11. Nothing needs renegotiating.
-
-What does conflict is **structure, not semantics**. 12 files exist on both
-branches:
-
-| Theirs | Mine | Note |
-| --- | --- | --- |
-| `backend/app/routers/` | `backend/app/routes/` | same idea, different name |
-| `backend/app/models/contracts.py` | `backend/app/models.py` | package vs module |
-| `backend/app/main.py` | `backend/app/main.py` | they mount explicitly, I auto-discover |
-| `frontend/src/**/*.tsx` (TypeScript) | `frontend/src/**/*.jsx` (JavaScript) | — |
-| `config.py`, `package.json`, `index.html`, `.env.example`, `.claude/launch.json`, `STATUS.md` | same | straight duplicates |
-
-**Recommended resolution — theirs wins on structure, mine slots in.** They built
-the skeleton deliberately, stubs and all, so the lower-friction direction is to
-adapt my modules into their layout rather than the reverse:
-
-1. Move `app/routes/generations.py` and `app/routes/propagate.py` into
-   `app/routers/`, delete `routers/stubs.py`'s `/generations` + `/propagate`
-   entries, and add two `include_router(..., prefix="/api")` lines to their
-   `main.py`. My auto-discovery in `main.py` is then redundant — drop it.
-2. Move my `models.py` classes into their `models/contracts.py`. The shapes
-   already agree; `GenerationCreate`, `Correction` and `propagated_from` are
-   additive.
-3. `app/store/` and `app/geo.py` are unique to me and conflict with nothing.
-   Their `services/geo_math.py` overlaps `app/geo.py` — keep one.
-4. Frontend: their `.tsx` and my `.jsx` coexist under one Vite config, but my
-   components should be ported to TypeScript to match. Merge the two
-   `package.json` dependency lists (they need mine: deck.gl, maplibre-gl,
-   loaders.gl).
-
-I have **not** done any of this — it edits their files, and the other two agents
-have not pushed yet, so the merge is better done once with everyone's work in
-hand.
-
----
-
 ## Running it
 
 ```bash
@@ -629,212 +777,103 @@ correction loop, and Lane Stadium at 420m to prove the radius filter excludes.
 
 ---
 
-# STATUS — input layer + geometry core (files 03, 04, 08)
+# STATUS — step 03 path B, and a duplicated-work postmortem
 
-Owner of the Mapillary convenience layer, the World State prompts, and the
-placement transform. Everything below is what the next person needs that is not
-obvious from the code.
+## Steps 04 and 08 got built twice
 
-## What landed
+Two people implemented the World State presets and the placement transform in
+parallel, in different languages, without knowing about each other. **The
+version in `main` is the one that stayed**; the duplicate was dropped.
 
-| | |
-|---|---|
-| Step 03 path B | `app/services/mapillary.py`, `app/routers/photo.py`, `frontend/src/photo/PhotoInput.tsx` |
-| Step 04 | `app/services/worldstate.py`, `app/routers/worldstates.py`, `frontend/src/worldstate/WorldStateSelector.tsx` |
-| Step 08 | `app/services/placement.py`, `app/services/placement_geom.py`, `app/routers/placement.py` |
+That is the right outcome and not a close call: the surviving implementation was
+already integrated, the demo was pre-baked against it, and its thresholds had
+been retuned against real output. Swapping it out would have meant re-baking for
+no gain a judge could see.
 
-180 backend tests, 38 frontend. `scripts/placement_preview.py` draws each placed
-mesh over its real footprint when a number looks suspicious.
+Worth saying plainly so nobody re-litigates it: the two implementations agreed on
+the substance. Both independently arrived at the achievable-IoU ceiling rather
+than an absolute threshold, both emit `scaleXYZ` with a uniform fallback, both
+treat the single-view depth shortfall as expected rather than as a fault, and
+both refuse to let a later clean sub-check overwrite an earlier flag.
 
-## This branch started in the wrong language
+## What the duplicate was checked for before it was dropped
 
-It built the same API surface in Node + Express before the FastAPI foundation
-was pushed. Three owners had converged on Python and `routers/stubs.py` left
-labelled 501s for exactly these three steps, so the Node version was ported
-across and deleted rather than kept as a second backend.
+Three things came out of comparing them, and they are worth keeping even though
+the code they came from is gone:
 
-The port is not a rewrite from memory — the Python and TypeScript
-implementations were run against the same 29 real footprints and agree on the
-min-area-rectangle angle to **0.005°**, and the five prompt strings are
-byte-identical.
+**The two rotations differ by 180 degrees, and neither is wrong.** The surviving
+version returns 137.07 for Burruss Hall (step 02's longest-edge bearing); the
+other returned 306.9. Those describe the same footprint alignment with the facade
+pointing opposite ways, which is exactly the ambiguity footprint IoU cannot
+resolve — `placement.py`'s own `rotation_note` says the same thing. Facade
+direction is a step 09 decision. Nothing to fix.
 
-## Files outside this branch's own modules that changed
+**The mesh frame is a rotation, not a mirror — if anyone ever swaps the rectangle
+proxy for the real base outline.** `compute_placement` currently approximates the
+mesh footprint as its width x depth rectangle, which is why the 0/180 and 90/270
+candidates score identically. If that is ever replaced with the mesh's actual
+base outline parsed from the `.glb`, note that glTF is right-handed: with Y up
+the geographic mapping is **east = +X, north = -Z**. Mapping north to +Z instead
+reflects the mesh.
 
-Four, all minimal, all listed here so nobody finds them by surprise:
+That bug cannot be caught by comparing IoU. Verified on real Burruss data: the
+mirrored mapping scored *higher* than the correct one (0.79 vs 0.74) on this
+near-rectangular building. What catches it is fit quality exceeding 1.0 —
+impossible, since the ceiling is the best a convex outline can score.
 
-- `app/config.py` — added `mapillary_access_token`. It was already in
-  `.env.example` but nothing read it, and `extra="ignore"` meant it vanished.
-- `app/main.py` — registered the three new routers.
-- `app/routers/stubs.py` — removed the three stubs this branch implemented. The
-  router stays for whatever is unimplemented next.
-- `frontend/src/map/layers.js` — `scaleFor` prefers `placement.scaleXYZ`, falling
-  back to the scalar. See below for why.
-- `frontend/src/api/client.ts`, `frontend/src/types/contract.ts`,
-  `frontend/src/App.tsx` — added the client calls, types and mounting for the two
-  new components.
+**The minimum-area rectangle is a far more stable axis than the longest edge.**
+Also only relevant if the rectangle proxy is ever replaced, because a real base
+outline is convex while an OSM footprint often is not, and a hull edge bridging a
+concave notch is long while saying nothing about orientation. Measured across 32
+real VT footprints: a polygon and its own convex hull agree to **0.000 degrees**
+on min-area-rectangle angle and disagree by up to **65 degrees** on longest edge.
 
-## Three bugs worth naming, because two of them were invisible
+## What did land: step 03 path B
 
-**The test suite could not see the first one.** `polygon-clipping` (the Node
-version's boolean-ops library) is CommonJS. Imported as `import * as`, Vite hands
-back a callable namespace but Node's ESM interop puts the functions on
-`.default` — so **every IoU silently returned 0 under `npm start` while the whole
-suite stayed green.** The Python port has no equivalent (Sutherland–Hodgman is
-written out in `placement_geom.py`), but the lesson generalises: a green suite
-that runs through a different module resolver than production is not proof.
+Mapillary auto-fetch was the one piece nobody else had built —
+`/api/photo/mapillary` was still a 501. It is now
+`app/services/mapillary.py` + `app/routers/photo.py`, with
+`frontend/src/photo/MapillarySuggestions.tsx` mounted inside `WorldStatePanel`
+beneath the required upload.
 
-**The rotating-calipers minimum-area rectangle rotated the wrong way.** It used
-`+edgeHeading` where aligning an edge with an axis needs `-edgeHeading`, so it
-never found the true minimum and was not rotation-invariant. Caught by asserting
-the invariant directly: `MAR(rotate(shape, φ)) == MAR(shape) + φ`.
+It is a convenience layer and behaves like one: where there is no coverage it
+renders **nothing at all**, and a failed lookup is deliberately indistinguishable
+from an empty one. Manual upload is the required path either way.
 
-**The scale fit ran in the compass frame.** deck.gl applies
-`translate(rotate(scale(model)))` — scale acts on *model-space* axes, before any
-rotation — so a non-uniform scale computed against east/north extents stretches
-the wrong axes entirely.
+**The Mapillary bbox index is non-deterministic.** Five *byte-identical* requests
+to a known-dense area returned **0, 2, 5, 6, 5** images, so a single empty `data`
+array is frequently a false negative. Handled with a retry ladder — the spec'd
+40 m radius, again, then one 100 m pass — de-duplicated by id and ranked by true
+haversine distance. Widening is last and modest on purpose: imagery 100 m away
+may be of a different building, and this photo feeds image generation.
 
-## The mesh frame is a rotation, not a mirror — verify this if you touch it
+Blacksburg coverage is real, which `03-photo-input.md` had listed as untested.
+Burruss Hall returns captures 23-51 m out, most recent 2026-03. The full captured
+request/response and the field notes are appended to that spec file:
+`geometry.coordinates` is `[lng, lat]`, `captured_at` is epoch **milliseconds**,
+and `thumb_*_url` is a signed expiring CDN link — the component downloads the
+bytes rather than passing the URL on, because a persisted reference to it rots.
 
-glTF is right-handed. With Y up, the geographic mapping that is a rotation is
-**east = +X, north = −Z**. Mapping north to +Z instead reflects the mesh, which
-costs IoU on any asymmetric building and is very easy to miss.
+Three small changes outside this module made it reachable: `config.py` gained
+`mapillary_access_token` (it was already in `.env.example` but nothing read it,
+and `extra="ignore"` meant it vanished silently), `main.py` registers the router,
+and `vite.config.ts` gained a `test` block — testing-library and jsdom were
+already in `devDependencies` but nothing configured them, so component tests
+could not run.
 
-Step 07's own note agrees from the other end: *"facade faces south at yaw 0"*,
-i.e. +Z points south. Both were checked against real Burruss Hall data by
-extruding the real footprint into a mesh in step 07's convention:
+## For step 02's owner: Overpass 406s are sometimes just the User-Agent
 
-| mapping | recovers the baked rotation? | scale | fit quality |
-|---|---|---|---|
-| north = −Z | yes, at every angle | 1.0000 | 0.9998 |
-| north = +Z | no, off by 85° at every angle | 0.98 | **1.0075** |
+Plain `curl` to `overpass-api.de` got `406 Not Acceptable`; the identical request
+with `User-Agent: ScorchedNebraskaVTHacks/1.0 (...)` got `200`.
+`02-footprint-overpass.md` attributes 406s to load, and at least some of them are
+the missing header instead. The router already sends one — this only matters when
+someone is testing the API by hand and concludes the service is down.
 
-That `> 1` is the tell. Fit quality is IoU divided by the best a convex outline
-*can* score against that polygon, so exceeding 1 is impossible — unless the
-shape being compared is not the mesh's real outline. A plain IoU comparison
-would not have caught it: on a near-rectangular building the mirrored version
-actually scored *higher* (0.79 vs 0.74), which is exactly how this kind of bug
-survives a plausibility check.
+## For step 06/07's owner: the scorched demo mesh is twice too tall
 
-`test_mesh_frame_is_a_rotation_not_a_mirror` guards it.
-
-## Rotation convention — what `rotationDegrees` means
-
-It is **deck.gl yaw**, ready for `getOrientation` as `[0, yaw, 90]`, because that
-is what `layers.js` feeds it. Internally the module works in compass headings and
-converts on the way out: `yaw = −heading`, which satisfies step 07's
-`facade bearing = 180 − yaw`. The internal heading is in
-`diagnostics.headingDegrees` if you need it.
-
-Every `rotationDegrees` in `scoredRotationCandidates` is yaw too, so step 09 can
-replay a candidate into the renderer without converting anything.
-
-## Where step 08 deviates from `08-placement-transform.md`
-
-Five places, each measured rather than assumed. All are documented in the code at
-the point they happen, and appended to the spec file itself.
-
-**1. Principal axis from the minimum-area rectangle, not the longest edge.** The
-mesh base outline is a convex hull; a real OSM footprint usually is not, and a
-hull edge bridging a concave notch is long while saying nothing about
-orientation. On the real fixtures a polygon and its own hull agree to **0.000°**
-on min-area-rectangle angle and disagree by up to **65°** on longest edge. Using
-the longest edge put Hancock Hall **29 m** from its footprint and Campbell Hall
-**28 m**; the min-area rectangle puts both within **5 cm**. Step 02's
-`rotationDegrees` is still accepted, cross-checked and reported.
-
-**2. Candidate headings cancel the mesh's own orientation.**
-`heading = footprintAxis − meshAxis + offset`. The spec's literal form assumes
-the mesh arrives pointing north; one reconstructed from a photograph does not.
-Reduces to the spec's formula when the mesh axis is 0, and the four candidates
-stay exactly 90° apart for step 09's buttons.
-
-**3. Confidence judges fit quality, not absolute IoU.** Because the mesh outline
-is convex, the ceiling for a given polygon is that polygon against its own hull —
-**0.48 for Campbell Hall, 0.98 for Sandy Hall**. One absolute threshold would
-flag a perfect placement on the concave buildings and pass a bad one on the
-simple ones.
-
-**4. The 180° flip is reported, not flagged.** Comparing winner to runner-up
-flagged **44% of real footprints, and every single one was a pure 0-vs-180
-pair** — a distinction footprint IoU cannot make, since a footprint is nearly
-centrosymmetric. Ambiguity is judged against the best geometrically
-*distinguishable* alternative (the 90° turns). `diagnostics.rotationFlipMargin`
-is reported so step 09 can still offer "turn it around".
-
-**5. Collision confirms box hits against the real polygons.** The bounding-box
-test the spec asks for is kept as the cheap gate, but campus sits at ~45° to the
-compass and axis-aligned boxes overlap constantly while buildings are metres
-apart. Also, "overlap exceeds a threshold" needs a denominator: against the mesh
-alone, a large building completely covering a small neighbour scores ~5% and
-passes. It is `max(overlap/mesh, overlap/neighbour)`.
-
-**Added, not in the spec:** an offset refinement. Centroid-matching a convex hull
-to a concave footprint is off by a couple of metres; a hill climb on the same IoU
-objective recovers it (`diagnostics.refinementShiftMeters`).
-
-## Flags have a severity, and it matters
-
-`low` moves the record to `auto-low`; `info` is recorded but does not. Without
-that split the pipeline flags everything: **the single-view depth shortfall fires
-on 100% of real meshes**, because guessing depth from one photograph is what
-step 06 does, not an anomaly. A confidence signal that fires on every building
-tells step 09 nothing.
-
-So `non-uniform-fallback` is `info` unless the aspect distortion exceeds 2.5×
-(both real samples are ~1.75×), and `pivot-not-base-centred` is `info` because
-placement corrects it exactly. Everything else is `low`.
-
-Confidence is derived from the accumulated flags at the very end, never assigned
-as the algorithm goes — spec 08's "don't let one flagged sub-check get silently
-overwritten" is structurally impossible here rather than merely avoided.
-
-## For step 09
-
-`scoredRotationCandidates` is the full sorted list of four, each with `iou`,
-`scale` and `coverage` — nothing discarded. `flags[]` carries `subStep` of
-`footprint | rotation | scale | collision | ground | mesh`, so the UI can tell a
-step-02 footprint problem from a step-08 placement problem, and `severity` so it
-can show the informational ones differently from the ones that actually demand a
-human.
-
-## Mapillary: the index is non-deterministic
-
-Five **byte-identical** requests to a known-dense area returned **0, 2, 5, 6, 5**
-images. A single empty `data` array is frequently a false negative. Handled with
-a retry ladder (40 m, 40 m again, then one 100 m pass), de-duplicated by id and
-ranked by true distance. Widening is last and modest on purpose: imagery 100 m
-away may be of a different building, and this photo feeds image generation.
-
-Blacksburg coverage is real — Burruss Hall returns captures ~23–45 m away, most
-recent 2026-03-14. The full capture and the field notes (`geometry.coordinates`
-is `[lng, lat]`; `captured_at` is epoch **milliseconds**; `thumb_*_url` is a
-signed expiring CDN URL that must not be persisted) are appended to
-`markdown_files/03-photo-input.md`.
-
-## Two things for other owners, not fixed here
-
-**Step 02 / Overpass returns 406 without a real `User-Agent`.** Plain `curl` got
-`406 Not Acceptable`; the identical request with
-`User-Agent: ScorchedNebraskaVTHacks/1.0 (...)` got `200`. Spec 02 attributes
-406s to load, but at least some are just the missing header. `overpass-api.de`
-also 429s readily; `overpass.kumi.systems` worked every time it did not. The
-router already handles both — worth knowing when one fails by hand.
-
-**Step 06/07: `burruss_scorched.glb` comes out ~64.5 m tall.** Burruss is roughly
-30 m. Step 07 scales the longest horizontal side to the footprint and height
-follows proportionally, so a mesh that is too tall for its plan stays too tall.
-Placement reports it as `diagnostics.scaledHeightMeters` rather than correcting
-it, because height is step 07's to own and silently rescaling it would hide the
-problem. `burruss_flooded.glb` is fine at 40.6 m. Worth picking the flooded one
-for the demo, or regenerating the scorched mesh.
-
-## Left undone
-
-- **The generate flow is not wired end to end in the UI.** `App.tsx` mounts the
-  photo input and the World State selector under the entry panel and holds their
-  state, but nothing calls `generateImage` → `generateMesh` → `computePlacement`
-  yet. Each piece works on its own and over HTTP; the chaining is a UI job that
-  belongs with whoever owns the pipeline panel.
-- **`generateImage` in `client.ts` still takes a raw `worldStatePrompt` string.**
-  Nothing calls it, so no raw preset text is reaching step 05 today. When the
-  flow is wired, call `resolveWorldStatePrompt` first and pass its result.
+`burruss_scorched.glb` comes out ~64.5 m tall; Burruss Hall is roughly 30 m.
+Step 07 fits the longest horizontal side to the footprint and height follows
+proportionally, so a mesh that is too tall for its plan stays too tall — nothing
+downstream corrects it, and placement should not, because height is step 07's to
+own. `burruss_flooded.glb` is fine at 40.6 m. Either prefer the flooded mesh for
+the demo or regenerate the scorched one.

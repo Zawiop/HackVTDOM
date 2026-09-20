@@ -1,20 +1,30 @@
 import type {
-  FootprintCandidate,
+  Correction,
   FootprintResult,
   GenerateImageResult,
   GenerateMeshResult,
   GeocodeResult,
+  Generation,
   MapillaryLookup,
-  PlacementRecord,
-  WorldStateListResponse,
-  WorldStatePrompt,
-  WorldStateSelection,
+  GenerationCreate,
+  PropagateResponse,
+  WorldState,
+  WorldStateOption,
 } from "../types/contract";
 
 // Empty by default so requests go through Vite's /api proxy — no CORS in dev.
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
-export class ApiError extends Error {}
+export class ApiError extends Error {
+  status: number;
+  path: string;
+  constructor(message: string, status: number, path: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.path = path;
+  }
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, {
@@ -24,7 +34,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    throw new ApiError(body?.detail ?? `Request failed (HTTP ${response.status})`);
+    const detail = body?.detail ?? `Request failed (HTTP ${response.status})`;
+    const message = typeof detail === "string" ? detail : JSON.stringify(detail);
+    console.error(`[api] ${path} -> ${response.status}: ${message}`);
+    throw new ApiError(message, response.status, path);
   }
   return response.json() as Promise<T>;
 }
@@ -50,18 +63,28 @@ export function getFootprint(
   });
 }
 
+/** Step 04 — the Present <-> Collapsed spectrum for the picker. */
+export function getWorldStates(signal?: AbortSignal) {
+  return request<WorldStateOption[]>("/api/worldstates", { signal });
+}
+
 /**
  * Step 05. Slow (~30-60 s on the free HF queue): show progress, and on ApiError offer a retry
  * (the backend answers 502/504 with `retryable: true` rather than hanging).
  */
 export function generateImage(
   photo: Blob,
-  worldStatePrompt: string,
+  selection: { worldState?: WorldState; worldStatePrompt?: string },
   signal?: AbortSignal,
 ) {
   const form = new FormData();
   form.append("photo", photo);
-  form.append("worldStatePrompt", worldStatePrompt);
+  // Step 04: send the spectrum id, not prompt text — the locked description is
+  // resolved server-side. `worldStatePrompt` is the freeform override only.
+  if (selection.worldState) form.append("worldState", selection.worldState);
+  if (selection.worldStatePrompt?.trim()) {
+    form.append("worldStatePrompt", selection.worldStatePrompt.trim());
+  }
   // Empty headers so the browser sets the multipart boundary itself.
   return request<GenerateImageResult>("/api/generate-image", {
     method: "POST",
@@ -87,61 +110,78 @@ export function generateMesh(
   });
 }
 
+// --- Steps 09-11: persistence, correction, propagate ---
+//
+// A failed write must never look like a success in the UI (step 11), so every
+// call below throws rather than resolving to null, and logs before it does.
+
+/** Step 11 — every persisted row, the data behind the map's 3D layer. */
+export function listGenerations(signal?: AbortSignal) {
+  return request<Generation[]>("/api/generations", { signal });
+}
+
+export function getGeneration(id: string, signal?: AbortSignal) {
+  return request<Generation>(`/api/generations/${id}`, { signal });
+}
+
+/** Step 11 — one address's sequence, oldest first: Reality → Flooded → … */
+export function getHistory(address: string, signal?: AbortSignal) {
+  return request<Generation[]>(
+    `/api/history?address=${encodeURIComponent(address)}`,
+    { signal },
+  );
+}
+
+/** Step 11 — save one generation. Never an upsert; a repeat address appends. */
+export function saveGeneration(payload: GenerationCreate, signal?: AbortSignal) {
+  return request<Generation>("/api/generations", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    signal,
+  });
+}
+
+/** Step 09 — persist a corrected transform; backend flips to manually-verified. */
+export function correctGeneration(
+  id: string,
+  correction: Correction,
+  signal?: AbortSignal,
+) {
+  return request<Generation>(`/api/generations/${id}/correction`, {
+    method: "PATCH",
+    body: JSON.stringify(correction),
+    signal,
+  });
+}
+
+/** Step 10 — reveal pre-baked neighbours within a radius. Never generates live. */
+export function propagate(
+  sourceGenerationId: string,
+  radiusMeters: 50 | 100 | 250,
+  neighbors: unknown[] = [],
+  signal?: AbortSignal,
+) {
+  return request<PropagateResponse>("/api/propagate", {
+    method: "POST",
+    body: JSON.stringify({
+      source_generation_id: sourceGenerationId,
+      radius_meters: radiusMeters,
+      neighbors,
+    }),
+    signal,
+  });
+}
 
 /**
- * Step 03 path B. Optional convenience layer on top of the required manual
- * upload, so the user can skip uploading where there is street-level coverage.
+ * Step 03 path B. Optional: manual upload is the required path and never
+ * depends on this.
  *
- * Always resolves. Zero photos is the expected common case for most addresses —
- * check `requiresManualUpload` and show nothing rather than an error.
+ * Always resolves — zero photos is the expected outcome for most addresses, so
+ * check `requiresManualUpload` and render nothing rather than an error.
  */
 export function lookupMapillary(lat: number, lng: number, signal?: AbortSignal) {
   return request<MapillaryLookup>(
     `/api/photo/mapillary?lat=${lat}&lng=${lng}`,
     { signal },
   );
-}
-
-/** Step 04. Labels and blurbs for the spectrum UI — never the prompt text. */
-export function fetchWorldStates(signal?: AbortSignal) {
-  return request<WorldStateListResponse>("/api/worldstates", { signal });
-}
-
-/**
- * Step 04. Turn a selection into the string step 05 sends to the image model.
- *
- * The body carries an enum and, optionally, the user's own words — never a
- * preset prompt string. That is the whole reason the five locked paragraphs
- * live on the server: output stays consistent across every building and user.
- */
-export function resolveWorldStatePrompt(
-  selection: WorldStateSelection,
-  signal?: AbortSignal,
-) {
-  return request<WorldStatePrompt>("/api/worldstates/resolve", {
-    method: "POST",
-    body: JSON.stringify(selection),
-    signal,
-  });
-}
-
-/**
- * Step 08. Pass step 02's chosen polygon *and* the neighbours it already
- * fetched — placement reuses them for the collision test and must never trigger
- * a second Overpass call.
- */
-export function computePlacement(
-  footprint: {
-    polygon: FootprintCandidate;
-    neighbors?: FootprintCandidate[];
-    confidence?: string;
-  },
-  mesh: { meshUrl?: string; path?: string; upAxis?: "y" | "z" },
-  signal?: AbortSignal,
-) {
-  return request<PlacementRecord>("/api/placement", {
-    method: "POST",
-    body: JSON.stringify({ footprint, mesh }),
-    signal,
-  });
 }

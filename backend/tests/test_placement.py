@@ -1,444 +1,269 @@
-"""Step 08 -- the placement transform (08-placement-transform.md).
+"""Step 08 — rotation search, scale fit, collision and confidence rules."""
 
-Ground-truth tests: every mesh here is built from a *real* OSM building polygon
-with a known rotation, scale and vertical offset baked in, so a pass means the
-math recovered exactly what was applied rather than merely looking plausible.
-"""
-from __future__ import annotations
-
-import json
 import math
-from pathlib import Path
-
-import pytest
-
-from app.services import placement_geom as g
-from app.services.placement import PlacementInputError, compute_placement_transform
-from tests.helpers import (
-    all_buildings,
-    angle_error,
-    block_glb,
-    building_named,
-    centred_ring,
-    extrude_to_glb,
-    local_ring,
-    neighbors_of,
-    prism_glb,
-)
-
-SAMPLES = Path(__file__).resolve().parent.parent / "assets" / "samples"
-
-
-def place(building, mesh_path, neighbors=None, confidence=None, options=None):
-    return compute_placement_transform(
-        {
-            "polygon": building,
-            "neighbors": neighbors or [],
-            **({"confidence": confidence} if confidence else {}),
-        },
-        {"path": str(mesh_path), "upAxis": "y"},
-        options,
-    )
 
+from app.services import geo_math, placement
 
-def offset_from_centroid_m(transform, building) -> float:
-    """How far the returned origin landed from the footprint's own centroid."""
-    ring = local_ring(building)
-    cx, cy = g.centroid(ring)
-    # local_ring is anchored on the polygon centroid, so the target is ~(0, 0);
-    # re-project the returned lat/lng into the same frame to compare.
-    from app.services.geo_math import meters_per_degree, polygon_centroid
+LAT, LNG = 37.23, -80.42
 
-    pts = [(p[0], p[1]) for p in building["geometry"]]
-    alng, alat = polygon_centroid(pts)
-    per_lng, per_lat = meters_per_degree(alat)
-    ex = (transform["position"][1] - alng) * per_lng
-    ny = (transform["position"][0] - alat) * per_lat
-    return math.hypot(ex - cx, ny - cy)
 
+def _rect_lnglat(center_lng, center_lat, along_m, across_m, bearing_deg):
+    """A building footprint of known real-world size and orientation."""
+    per_lng, per_lat = geo_math.meters_per_degree(center_lat)
+    theta = math.radians(bearing_deg)
+    along = (math.sin(theta), math.cos(theta))
+    across = (math.cos(theta), -math.sin(theta))
+    corners = []
+    for sa, sc in ((0.5, 0.5), (0.5, -0.5), (-0.5, -0.5), (-0.5, 0.5)):
+        east = sa * along_m * along[0] + sc * across_m * across[0]
+        north = sa * along_m * along[1] + sc * across_m * across[1]
+        corners.append((center_lng + east / per_lng, center_lat + north / per_lat))
+    return corners
 
-# --- ground truth ---------------------------------------------------------
 
+def _place(polygon, mesh_w, mesh_d, **kw):
+    bearing = geo_math.longest_edge_bearing_degrees(polygon)
+    return placement.compute_placement(polygon, bearing, mesh_w, mesh_d, **kw)
 
-def test_mesh_built_from_the_footprint_places_essentially_perfectly(tmp_path):
-    building = building_named("Davidson Hall")
-    mesh = extrude_to_glb(centred_ring(building), tmp_path / "m.glb", height_meters=18)
 
-    t = place(building, mesh)
-    d = t["diagnostics"]
+# --- rotation ---
 
-    # The mesh IS the footprint, so placement should reach the ceiling a convex
-    # base outline can achieve against this (concave) polygon.
-    assert d["fitQuality"] > 0.99
-    assert d["iou"] == pytest.approx(d["maxAchievableIou"], abs=0.01)
-    assert t["scale"] == pytest.approx(1.0, abs=0.02)
-    assert t["scaleMode"] == "uniform"
-    assert t["confidence"] == "auto-high"
-    assert t["flags"] == []
 
+def test_exact_match_scores_near_perfect_iou():
+    polygon = _rect_lnglat(LNG, LAT, 80.0, 40.0, 30.0)
+    result = _place(polygon, mesh_w=80.0, mesh_d=40.0)
 
-@pytest.mark.parametrize("pre_rotate", [0, 37, 90, 145, 213, 300])
-def test_recovers_a_baked_rotation(tmp_path, pre_rotate):
-    building = building_named("Derring Hall")
-    mesh = extrude_to_glb(
-        centred_ring(building), tmp_path / f"m{pre_rotate}.glb", pre_rotate_degrees=pre_rotate
-    )
+    assert result["confidence"] == "auto-high"
+    assert result["scoredRotationCandidates"][0]["iou"] > 0.98
+    assert abs(result["scale"] - 1.0) < 0.02
+    assert result["checks"]["rotation"]["ok"]
 
-    t = place(building, mesh)
 
-    # A mesh rotated by +pre_rotate in compass terms needs heading -pre_rotate to
-    # undo it, and the renderer's yaw runs opposite to the compass, so the
-    # returned yaw is +pre_rotate.
-    assert angle_error(t["rotationDegrees"], pre_rotate) < 2
-    assert t["diagnostics"]["fitQuality"] > 0.95
-    assert t["scale"] == pytest.approx(1.0, abs=0.02)
+def test_rotation_search_recovers_the_building_bearing():
+    for bearing in (0.0, 25.0, 65.0, 140.0):
+        polygon = _rect_lnglat(LNG, LAT, 90.0, 30.0, bearing)
+        result = _place(polygon, mesh_w=45.0, mesh_d=15.0)  # right shape, half size
+        best = max(result["scoredRotationCandidates"], key=lambda c: c["iou"])
+        # 0 and 180 are the same rectangle, so compare modulo 180.
+        assert abs(best["rotationDegrees"] % 180.0 - bearing % 180.0) < 1.0, bearing
+        assert best["iou"] > 0.95, bearing
 
 
-def test_keeps_four_candidates_ninety_degrees_apart_for_step_09(tmp_path):
-    building = building_named("Norris Hall")
-    mesh = extrude_to_glb(centred_ring(building), tmp_path / "m.glb")
+def test_all_four_offsets_are_kept_for_step_09():
+    polygon = _rect_lnglat(LNG, LAT, 80.0, 40.0, 10.0)
+    result = _place(polygon, mesh_w=80.0, mesh_d=40.0)
 
-    t = place(building, mesh)
-    cands = t["scoredRotationCandidates"]
+    offsets = sorted(c["offsetDegrees"] for c in result["scoredRotationCandidates"])
+    assert offsets == [0.0, 90.0, 180.0, 270.0]
+    # Step 09 replays these as buttons, so each needs its own scale too.
+    assert all("scale" in c and "iou" in c for c in result["scoredRotationCandidates"])
 
-    assert len(cands) == 4
-    assert sorted(c["offsetDegrees"] for c in cands) == [0, 90, 180, 270]
 
-    # Sorted best-first, every one scored, none discarded.
-    ious = [c["iou"] for c in cands]
-    assert ious == sorted(ious, reverse=True)
-    assert t["rotationDegrees"] == cands[0]["rotationDegrees"]
-    for c in cands:
-        assert 0.0 <= c["iou"] <= 1.0
-        assert c["scale"] > 0
+def test_opposite_rotations_tie_because_the_mesh_is_a_rectangle():
+    """Documents the known limit: IoU cannot tell a facade from its back."""
+    polygon = _rect_lnglat(LNG, LAT, 80.0, 40.0, 30.0)
+    result = _place(polygon, mesh_w=80.0, mesh_d=40.0)
+    by_offset = {c["offsetDegrees"]: c["iou"] for c in result["scoredRotationCandidates"]}
 
-    headings = sorted(c["rotationDegrees"] % 360 for c in cands)
-    for a, b in zip(headings, headings[1:]):
-        assert b - a == pytest.approx(90, abs=0.01)
+    assert abs(by_offset[0.0] - by_offset[180.0]) < 1e-6
+    assert abs(by_offset[90.0] - by_offset[270.0]) < 1e-6
+    assert "step 09" in result["rotation_note"]
 
 
-@pytest.mark.parametrize("name", ["Davidson Hall", "Patton Hall", "War Memorial Hall"])
-def test_lands_on_the_footprint_not_elsewhere_on_the_planet(tmp_path, name):
-    building = building_named(name)
-    mesh = extrude_to_glb(centred_ring(building), tmp_path / "m.glb", pre_rotate_degrees=63)
+def test_near_square_footprint_is_flagged_not_guessed():
+    polygon = _rect_lnglat(LNG, LAT, 50.0, 49.0, 20.0)
+    result = _place(polygon, mesh_w=50.0, mesh_d=49.0)
 
-    t = place(building, mesh)
-    lat, lng, _ = t["position"]
+    assert result["checks"]["rotation"]["ok"] is False
+    assert result["confidence"] == "auto-low"
+    assert "human" in result["checks"]["rotation"]["detail"]
 
-    assert offset_from_centroid_m(t, building) < 2
-    assert 37.2 < lat < 37.3
-    assert -80.5 < lng < -80.4
 
+# --- scale ---
 
-# --- scale ----------------------------------------------------------------
 
+def test_uniform_scale_fits_a_half_size_mesh():
+    polygon = _rect_lnglat(LNG, LAT, 80.0, 40.0, 0.0)
+    result = _place(polygon, mesh_w=40.0, mesh_d=20.0)
 
-def test_prefers_a_single_uniform_factor_when_proportions_match(tmp_path):
-    building = building_named("Hancock Hall")
-    mesh = extrude_to_glb(centred_ring(building), tmp_path / "m.glb", pre_scale=0.5)
+    assert abs(result["scale"] - 2.0) < 0.02
+    assert result["scaleXYZ"] is None
+    assert result["checks"]["scale"]["ok"]
 
-    t = place(building, mesh)
 
-    assert t["scaleMode"] == "uniform"
-    assert t["scale"] == pytest.approx(2.0, rel=0.05)
-    assert t["scaleXYZ"][0] == pytest.approx(t["scaleXYZ"][2])
+def test_a_shallow_mesh_gets_a_stretch_hint_but_is_not_flagged():
+    """Single-photo meshes systematically under-read depth; that is not a failure.
 
-
-def test_falls_back_to_non_uniform_past_the_undersize_threshold(tmp_path):
-    building = building_named("Davidson Hall")
-    rect = g.min_area_rectangle(local_ring(building))
-
-    # Matches the building's long axis but only a third as deep: uniform scaling
-    # would leave it at ~33% coverage, far past the ~30%-undersized threshold.
-    mesh = block_glb(tmp_path / "m.glb", rect["length"], rect["width"] / 3, 15)
-
-    t = place(building, mesh)
-
-    assert t["scaleMode"] == "non-uniform"
-    assert t["scaleXYZ"][0] != pytest.approx(t["scaleXYZ"][2], rel=0.01)
-    assert t["confidence"] == "auto-low"
-    assert "non-uniform-fallback" in [f["code"] for f in t["flags"]]
-
-
-def test_does_not_stretch_a_mesh_only_slightly_off_proportion(tmp_path):
-    building = building_named("Hahn Hall South")
-    rect = g.min_area_rectangle(local_ring(building))
-
-    mesh = block_glb(tmp_path / "m.glb", rect["length"], rect["width"] * 0.9, 15)
-    t = place(building, mesh)
-
-    assert t["scaleMode"] == "uniform"
-    assert "non-uniform-fallback" not in [f["code"] for f in t["flags"]]
-
-
-def test_flags_a_units_problem_instead_of_absorbing_it(tmp_path):
-    building = building_named("Norris Hall")
-    # Authored in centimetres rather than metres -- step 07's job to catch.
-    mesh = extrude_to_glb(centred_ring(building), tmp_path / "m.glb", pre_scale=0.01)
-
-    t = place(building, mesh)
-
-    assert t["scale"] == pytest.approx(100, rel=0.05)
-    assert t["confidence"] == "auto-low"
-    flag = next(f for f in t["flags"] if f["code"] == "implausible-scale")
-    assert flag["subStep"] == "mesh"
-    assert "units problem" in flag["message"]
-
-
-# --- ground alignment -----------------------------------------------------
-
-
-def test_z_is_zero_when_step_07_base_centred_the_pivot(tmp_path):
-    building = building_named("Patton Hall")
-    mesh = extrude_to_glb(centred_ring(building), tmp_path / "m.glb", height_meters=20)
-
-    t = place(building, mesh)
-
-    assert t["position"][2] == pytest.approx(0, abs=1e-6)
-    assert t["ground"]["meshBaseOffsetUnits"] == pytest.approx(0, abs=1e-6)
-
-
-def test_sinks_a_floating_mesh_back_to_the_ground_and_says_so(tmp_path):
-    building = building_named("Patton Hall")
-    mesh = extrude_to_glb(centred_ring(building), tmp_path / "m.glb", height_meters=20, base_offset=7)
-
-    t = place(building, mesh)
-
-    assert t["ground"]["meshBaseOffsetUnits"] == pytest.approx(7, abs=0.01)
-    assert t["position"][2] == pytest.approx(-7 * t["scaleXYZ"][1], abs=0.05)
-    assert "pivot-not-base-centred" in [f["code"] for f in t["flags"]]
-
-
-def test_lifts_a_sunken_mesh_up_to_the_ground(tmp_path):
-    building = building_named("Patton Hall")
-    mesh = extrude_to_glb(centred_ring(building), tmp_path / "m.glb", base_offset=-4)
-
-    t = place(building, mesh)
-
-    assert t["position"][2] > 0
-    assert t["position"][2] == pytest.approx(4 * t["scaleXYZ"][1], abs=0.05)
-
-
-def test_scaled_height_stays_physically_plausible(tmp_path):
-    building = building_named("Derring Hall")
-    mesh = extrude_to_glb(centred_ring(building), tmp_path / "m.glb", height_meters=24)
-
-    t = place(building, mesh)
-    assert 15 < t["diagnostics"]["scaledHeightMeters"] < 40
-
-
-# --- collision ------------------------------------------------------------
-
-
-def test_reuses_step_02_neighbours_and_reports_a_clean_placement(tmp_path):
-    building = building_named("War Memorial Hall")
-    nbrs = neighbors_of(building)
-    mesh = extrude_to_glb(centred_ring(building), tmp_path / "m.glb")
-
-    t = place(building, mesh, neighbors=nbrs)
-
-    assert t["collision"]["neighborsChecked"] == len(nbrs)
-    assert t["collision"]["neighborsChecked"] > 10
-    assert t["collision"]["worstOverlapRatio"] < 0.15
-    assert "neighbor-overlap" not in [f["code"] for f in t["flags"]]
-
-
-def test_never_counts_the_target_as_its_own_neighbour(tmp_path):
-    building = building_named("Davidson Hall")
-    mesh = extrude_to_glb(centred_ring(building), tmp_path / "m.glb")
-
-    # Pass the whole set, target included, the way a naive step 02 result would.
-    t = place(building, mesh, neighbors=list(all_buildings()))
-
-    assert t["collision"]["neighborsChecked"] == len(all_buildings()) - 1
-    ids = [str(o["neighborId"]) for o in t["collision"]["overlaps"]]
-    assert str(building["osmId"]) not in ids
-
-
-def test_flags_a_real_overlap(tmp_path):
-    building = building_named("Davidson Hall")
-
-    # Inflating the *footprint* is what makes the placed mesh spill across the
-    # buildings next door. Inflating the mesh alone would not: the scale fit
-    # simply shrinks an oversized mesh back onto the footprint it was given.
-    from app.services.geo_math import meters_per_degree, polygon_centroid
-
-    pts = [(p[0], p[1]) for p in building["geometry"]]
-    alng, alat = polygon_centroid(pts)
-    per_lng, per_lat = meters_per_degree(alat)
-    inflated = {
-        **building,
-        "geometry": [[alng + (p[0] - alng) * 4, alat + (p[1] - alat) * 4] for p in pts],
-    }
-
-    mesh = extrude_to_glb(centred_ring(inflated), tmp_path / "m.glb", height_meters=20)
-    t = place(inflated, mesh, neighbors=neighbors_of(building))
-
-    assert len(t["collision"]["overlaps"]) > 0
-    assert t["collision"]["worstOverlapRatio"] > 0.15
-    assert t["confidence"] == "auto-low"
-    assert "neighbor-overlap" in [f["code"] for f in t["flags"]]
-
-
-def test_diagonal_neighbours_whose_boxes_touch_are_not_false_positives(tmp_path):
-    """Campus sits at ~45 degrees to the compass, so axis-aligned boxes overlap
-    constantly while the buildings are metres apart. None of these are real."""
-    flagged = 0
-    for building in all_buildings():
-        mesh = extrude_to_glb(centred_ring(building), tmp_path / "m.glb", height_meters=20)
-        t = place(building, mesh, neighbors=neighbors_of(building))
-        if "neighbor-overlap" in [f["code"] for f in t["flags"]]:
-            flagged += 1
-    assert flagged == 0
-
-
-# --- confidence -----------------------------------------------------------
-
-
-def test_propagates_step_02_low_confidence_as_a_distinct_flag(tmp_path):
-    building = building_named("Norris Hall")
-    mesh = extrude_to_glb(centred_ring(building), tmp_path / "m.glb")
-
-    t = place(building, mesh, confidence="auto-low")
-
-    assert t["confidence"] == "auto-low"
-    flag = next(f for f in t["flags"] if f["subStep"] == "footprint")
-    assert flag["code"] == "footprint-match-low"
-
-
-def test_a_later_clean_check_never_clears_an_earlier_flag(tmp_path):
-    building = building_named("Norris Hall")
-    mesh = extrude_to_glb(centred_ring(building), tmp_path / "m.glb")
-
-    t = place(building, mesh, neighbors=neighbors_of(building), confidence="auto-low")
-
-    # Rotation, scale, collision and ground all pass...
-    assert t["diagnostics"]["fitQuality"] > 0.95
-    assert t["collision"]["worstOverlapRatio"] < 0.15
-    assert t["position"][2] == pytest.approx(0, abs=1e-6)
-    # ...and it is still auto-low, with the one original reason intact.
-    assert t["confidence"] == "auto-low"
-    assert len(t["flags"]) == 1
-
-
-def test_flags_a_mesh_of_the_wrong_shape(tmp_path):
-    building = building_named("Sandy Hall")  # near-rectangular in plan
-    rect = g.min_area_rectangle(local_ring(building))
-
-    # A triangle fills about half the rectangle it is inscribed in however it is
-    # rotated or scaled, so fit quality cannot reach the threshold.
-    mesh = prism_glb(tmp_path / "m.glb", rect["length"], rect["width"], 12)
-    t = place(building, mesh)
-
-    assert t["diagnostics"]["fitQuality"] < 0.6
-    assert t["confidence"] == "auto-low"
-    assert "low-iou" in [f["code"] for f in t["flags"]]
-
-
-def test_reports_step_02_derived_values_disagreeing(tmp_path):
-    building = building_named("Patton Hall")
-    mesh = extrude_to_glb(centred_ring(building), tmp_path / "m.glb")
-
-    t = compute_placement_transform(
-        {"polygon": {**building, "footprintWidthMeters": 999, "rotationDegrees": 7}},
-        {"path": mesh, "upAxis": "y"},
-    )
-
-    assert t["confidence"] == "auto-low"
-    flag = next(f for f in t["flags"] if f["code"] == "derived-values-disagree")
-    assert "footprintWidthMeters reported 999" in flag["message"]
-    assert t["diagnostics"]["footprintDerivedMismatch"]
-
-
-def test_the_180_flip_is_reported_not_flagged(tmp_path):
-    building = building_named("Derring Hall")
-    mesh = extrude_to_glb(centred_ring(building), tmp_path / "m.glb")
-
-    t = place(building, mesh)
-
-    # The flip scores almost as well -- a footprint cannot tell a facade from its
-    # back -- and that is information for step 09, not a confidence problem.
-    assert t["diagnostics"]["rotationFlipMargin"] is not None
-    assert abs(t["diagnostics"]["rotationFlipMargin"]) < 0.1
-    assert "rotation-ambiguous" not in [f["code"] for f in t["flags"]]
-    assert t["confidence"] == "auto-high"
-
-
-def test_a_genuine_across_vs_along_ambiguity_is_still_flagged(tmp_path):
-    building = building_named("Sandy Hall")
-    rect = g.min_area_rectangle(local_ring(building))
-
-    # A square fits equally well at every quadrant: the real ambiguity, 90
-    # degrees out rather than 180.
-    mesh = block_glb(tmp_path / "m.glb", rect["length"], rect["length"], 12)
-    t = place(building, mesh)
-
-    assert "rotation-ambiguous" in [f["code"] for f in t["flags"]]
-    assert t["confidence"] == "auto-low"
-
-
-def test_every_real_building_places_at_auto_high_against_its_own_footprint(tmp_path):
-    """The strongest end-to-end assertion available: a mesh that genuinely is the
-    building must never be routed to manual correction."""
-    for building in all_buildings():
-        mesh = extrude_to_glb(centred_ring(building), tmp_path / "m.glb", height_meters=20)
-        t = place(building, mesh, neighbors=neighbors_of(building))
-
-        name = building["tags"].get("name", building["osmId"])
-        assert t["confidence"] == "auto-high", f"{name}: {t['flags']}"
-        assert t["diagnostics"]["fitQuality"] > 0.95, name
-        assert t["scale"] == pytest.approx(1.0, abs=0.05), name
-        assert t["position"][2] == pytest.approx(0, abs=1e-6), name
-
-
-# --- handedness -----------------------------------------------------------
-
-
-def test_mesh_frame_is_a_rotation_not_a_mirror(tmp_path):
-    """glTF is right-handed, so with Y up the geographic mapping must be
-    east = +X, **north = -Z**. Mapping north to +Z instead reflects the mesh.
-
-    The tell is that a mirrored outline can score *above* the ceiling a convex
-    outline is able to reach against the true polygon -- which is impossible, and
-    is exactly what the wrong mapping produced on real Burruss Hall data.
+    Mirrors the real captured output: SF3D returned 101.88 x 37.57 m for a
+    footprint measuring 101.88 x 70.79, a 47% shortfall on the free axis.
     """
-    building = building_named("Davidson Hall")
-    mesh = extrude_to_glb(centred_ring(building), tmp_path / "m.glb")
+    polygon = _rect_lnglat(LNG, LAT, 101.88, 70.79, 0.0)
+    result = _place(polygon, mesh_w=101.88, mesh_d=37.57)
 
-    t = place(building, mesh)
-    d = t["diagnostics"]
-
-    assert d["iou"] <= d["maxAchievableIou"] + 1e-6
-    assert d["fitQuality"] <= 1.0 + 1e-6
-
-
-# --- input validation -----------------------------------------------------
+    assert result["checks"]["scale"]["ok"] is True
+    assert abs(result["scale"] - 1.0) < 0.01
+    # The non-uniform option is still offered, it just is not a flag.
+    assert result["scaleXYZ"] is not None
+    assert any("shallower" in w for w in result["warnings"])
 
 
-def test_rejects_a_polygon_with_too_few_vertices(tmp_path):
-    mesh = block_glb(tmp_path / "m.glb", 10, 10, 10)
-    with pytest.raises(PlacementInputError):
-        compute_placement_transform(
-            {"polygon": {"geometry": [[-80.4, 37.2], [-80.3, 37.2]]}},
-            {"path": mesh, "upAxis": "y"},
-        )
+def test_wildly_mismatched_proportions_are_flagged_as_a_units_problem():
+    # Mesh is 1:1, footprint is 4:1 — a 75% shortfall, past what depth inference explains.
+    polygon = _rect_lnglat(LNG, LAT, 80.0, 20.0, 0.0)
+    result = _place(polygon, mesh_w=40.0, mesh_d=40.0)
+
+    assert result["checks"]["scale"]["ok"] is False
+    assert result["confidence"] == "auto-low"
+    assert result["scaleXYZ"] is not None
+    # `scale` stays proportion-preserving, which is the stated preference.
+    assert abs(result["scale"] - 0.5) < 0.02
+    assert "units" in result["checks"]["scale"]["detail"]
 
 
-def test_rejects_a_footprint_too_small_to_place_against(tmp_path):
-    mesh = block_glb(tmp_path / "m.glb", 10, 10, 10)
-    tiny = [[-80.4234, 37.2284], [-80.42339, 37.2284], [-80.42339, 37.22841]]
-    with pytest.raises(PlacementInputError, match="too small"):
-        compute_placement_transform({"polygon": {"geometry": tiny}}, {"path": mesh, "upAxis": "y"})
+def test_rotation_ceiling_accounts_for_a_mesh_smaller_than_the_footprint():
+    """A shallow mesh caps IoU by area, not by being wrongly oriented."""
+    polygon = _rect_lnglat(LNG, LAT, 101.88, 70.79, 0.0)
+    result = _place(polygon, mesh_w=101.88, mesh_d=37.57)
+
+    # The mesh covers ~53% of the footprint, so no rotation can beat that.
+    assert result["achievableIou"] < 0.6
+    assert result["rectangularity"] > 0.95  # the footprint itself is a clean rectangle
+    # Correctly oriented despite the low absolute IoU.
+    assert result["checks"]["rotation"]["ok"] is True
 
 
-def test_rejects_a_mesh_input_with_nothing_to_load():
-    with pytest.raises(PlacementInputError):
-        compute_placement_transform({"polygon": building_named("Norris Hall")}, {})
+# --- collision ---
 
 
-def test_reports_a_missing_mesh_file_as_bad_input():
-    with pytest.raises(PlacementInputError, match="not/here"):
-        compute_placement_transform(
-            {"polygon": building_named("Norris Hall")},
-            {"path": "/definitely/not/here.glb", "upAxis": "y"},
-        )
+def test_overlapping_neighbour_is_flagged():
+    polygon = _rect_lnglat(LNG, LAT, 60.0, 60.0, 0.0)
+    per_lng, _ = geo_math.meters_per_degree(LAT)
+    neighbour = _rect_lnglat(LNG + 20.0 / per_lng, LAT, 60.0, 60.0, 0.0)
+
+    result = _place(polygon, 60.0, 60.0, neighbors_lnglat=[neighbour])
+    assert result["checks"]["collision"]["ok"] is False
+    assert result["confidence"] == "auto-low"
+
+
+def test_diagonal_neighbour_whose_bounding_box_overlaps_is_not_flagged():
+    """The reason collision uses real polygon overlap, not axis-aligned boxes.
+
+    Two thin buildings at 45 degrees, offset along their own axis: their
+    axis-aligned bounding boxes overlap heavily while the buildings never touch.
+    """
+    polygon = _rect_lnglat(LNG, LAT, 80.0, 40.0, 45.0)
+    per_lng, per_lat = geo_math.meters_per_degree(LAT)
+    # 100 m apart along their shared 45-degree axis: a clear 20 m gap between two
+    # 80 m buildings, while their axis-aligned boxes still overlap by ~14 m.
+    offset = 100.0 / math.sqrt(2)
+    neighbour = _rect_lnglat(
+        LNG + offset / per_lng, LAT + offset / per_lat, 80.0, 40.0, 45.0
+    )
+
+    mesh_box = geo_math.bounding_box(polygon)
+    nb_box = geo_math.bounding_box(neighbour)
+    assert nb_box["minLng"] < mesh_box["maxLng"], "test setup: bounding boxes must overlap"
+    assert nb_box["minLat"] < mesh_box["maxLat"], "test setup: bounding boxes must overlap"
+
+    result = _place(polygon, 80.0, 40.0, neighbors_lnglat=[neighbour])
+    assert result["checks"]["collision"]["ok"], result["checks"]["collision"]["detail"]
+
+
+def test_l_shaped_building_is_judged_against_its_own_ceiling():
+    """An L-shape can never reach IoU 1.0, so it must not be flagged for that alone."""
+    per_lng, per_lat = geo_math.meters_per_degree(LAT)
+    m = lambda e, n: (LNG + e / per_lng, LAT + n / per_lat)  # noqa: E731
+    l_shape = [m(-30, -20), m(30, -20), m(30, 0), m(0, 0), m(0, 20), m(-30, 20)]
+
+    result = _place(l_shape, mesh_w=60.0, mesh_d=40.0)
+    assert 0.35 < result["rectangularity"] < 0.9
+    # Judged relative to the ceiling, not against a flat 1.0.
+    assert result["checks"]["rotation"]["ok"], result["checks"]["rotation"]["detail"]
+
+
+def test_very_irregular_footprint_is_sent_to_a_human():
+    per_lng, per_lat = geo_math.meters_per_degree(LAT)
+    m = lambda e, n: (LNG + e / per_lng, LAT + n / per_lat)  # noqa: E731
+    # A thin cross: fills very little of its bounding box.
+    cross = [
+        m(-5, -40), m(5, -40), m(5, -5), m(40, -5), m(40, 5), m(5, 5),
+        m(5, 40), m(-5, 40), m(-5, 5), m(-40, 5), m(-40, -5), m(-5, -5),
+    ]
+    result = _place(cross, mesh_w=80.0, mesh_d=80.0)
+
+    assert result["rectangularity"] < 0.35
+    assert result["checks"]["rotation"]["ok"] is False
+    assert result["confidence"] == "auto-low"
+    assert "human" in result["checks"]["rotation"]["detail"]
+
+
+def test_distant_neighbour_does_not_collide():
+    polygon = _rect_lnglat(LNG, LAT, 80.0, 40.0, 0.0)
+    per_lng, _ = geo_math.meters_per_degree(LAT)
+    neighbour = _rect_lnglat(LNG + 300.0 / per_lng, LAT, 60.0, 60.0, 0.0)
+
+    result = _place(polygon, 80.0, 40.0, neighbors_lnglat=[neighbour])
+    assert result["checks"]["collision"]["ok"]
+    assert result["confidence"] == "auto-high"
+
+
+# --- confidence propagation ---
+
+
+def test_ambiguous_footprint_from_step_02_is_not_laundered():
+    polygon = _rect_lnglat(LNG, LAT, 80.0, 40.0, 30.0)
+    result = _place(polygon, 80.0, 40.0, footprint_confidence="auto-low")
+
+    assert result["confidence"] == "auto-low"
+    assert result["checks"]["footprintMatch"]["ok"] is False
+    # A clean later check must not overwrite the earlier flag.
+    assert result["checks"]["rotation"]["ok"] is True
+
+
+def test_position_is_lat_lng_z_at_ground_level():
+    polygon = _rect_lnglat(LNG, LAT, 80.0, 40.0, 0.0)
+    result = _place(polygon, 80.0, 40.0)
+
+    lat, lng, z = result["position"]
+    assert abs(lat - LAT) < 1e-5
+    assert abs(lng - LNG) < 1e-5
+    assert z == 0.0
+
+
+def test_zero_mesh_extents_are_rejected():
+    polygon = _rect_lnglat(LNG, LAT, 80.0, 40.0, 0.0)
+    try:
+        _place(polygon, 0.0, 40.0)
+    except ValueError as exc:
+        assert "positive metres" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+# --- geometry primitives ---
+
+
+def test_iou_of_identical_squares_is_one():
+    square = geo_math.oriented_rectangle((0.0, 0.0), 10.0, 10.0, 0.0)
+    assert abs(geo_math.intersection_over_union(square, square) - 1.0) < 1e-6
+
+
+def test_iou_of_disjoint_squares_is_zero():
+    a = geo_math.oriented_rectangle((0.0, 0.0), 10.0, 10.0, 0.0)
+    b = geo_math.oriented_rectangle((100.0, 0.0), 10.0, 10.0, 0.0)
+    assert geo_math.intersection_over_union(a, b) == 0.0
+
+
+def test_iou_of_half_overlapping_squares():
+    a = geo_math.oriented_rectangle((0.0, 0.0), 10.0, 10.0, 0.0)
+    b = geo_math.oriented_rectangle((5.0, 0.0), 10.0, 10.0, 0.0)
+    # Intersection 50, union 150.
+    assert abs(geo_math.intersection_over_union(a, b) - 1.0 / 3.0) < 1e-6
+
+
+def test_clipping_handles_a_concave_subject():
+    """An L-shaped building clipped by a rectangle keeps only the covered arm."""
+    l_shape = [(0, 0), (20, 0), (20, 10), (10, 10), (10, 20), (0, 20)]
+    clip = geo_math.oriented_rectangle((5.0, 5.0), 10.0, 10.0, 0.0)
+    area = geo_math.polygon_area_2d(geo_math.clip_polygon_convex(l_shape, clip))
+    assert abs(area - 100.0) < 1e-6

@@ -62,6 +62,19 @@ export interface FootprintResult {
   attribution: string;
 }
 
+/** Step 04 — GET /api/worldstates. One point on the Present ↔ Collapsed spectrum.
+ *
+ * Carries no prompt text on purpose: the five locked descriptions stay server-side
+ * so output is consistent whichever building or user triggers them. Send the `id`
+ * to /api/generate-image, never a prompt string.
+ */
+export interface WorldStateOption {
+  id: WorldState;
+  label: string;
+  blurb: string;
+  spectrumPosition: number;
+}
+
 /** Steps 05-07 — one provider try, as reported by the generation routes. */
 export interface ProviderAttempt {
   provider: string;
@@ -85,6 +98,10 @@ export interface GenerateImageResult {
   model: string;
   width: number;
   height: number;
+  /** Step 04: which spectrum point this was. Persisted as `world_state`. */
+  worldState: WorldState | null;
+  /** `preset:<id>` when the locked description was used, `override` when the user typed one. */
+  promptSource: string;
   attempts: ProviderAttempt[];
   cached: boolean;
   elapsedMs: number;
@@ -127,136 +144,135 @@ export interface GenerateMeshResult {
   elapsedMs: number;
 }
 
-/** Step 08 — one scored candidate from the IoU rotation search. */
-export interface ScoredRotation {
-  /** Offset from the footprint's principal axis: 0, 90, 180 or 270. */
+/** Step 08 — POST /api/placement */
+export interface PlacementRequest {
+  footprint: FootprintCandidate;
+  meshExtentsMeters: { width: number; depth: number; height?: number };
+  /** Reused from the step 02 response — step 08 must not re-query Overpass. */
+  neighbors?: FootprintCandidate[];
+  footprintConfidence?: ConfidenceState;
+}
+
+export interface ScoredRotationCandidate {
+  rotationDegrees: number;
   offsetDegrees: number;
-  /** deck.gl yaw, ready for getOrientation. */
-  rotationDegrees: number;
   iou: number;
-  intersectionAreaSqM: number;
   scale: number;
-  /** Fraction of the footprint's length/width the scaled mesh covers. */
-  coverage: [number, number];
 }
 
-/**
- * Step 08 — why a placement is or is not trusted.
- *
- * `severity` matters: `low` moves the record to auto-low, `info` is recorded but
- * does not. A signal that fires on every building tells step 09 nothing, and the
- * single-view depth shortfall fires on every real mesh.
- */
-export interface PlacementFlag {
-  subStep: "footprint" | "rotation" | "scale" | "collision" | "ground" | "mesh";
-  code: string;
-  message: string;
-  severity: "low" | "info";
+export interface PlacementCheck {
+  ok: boolean;
+  detail: string;
 }
 
-/** Step 08 — placement transform */
-export interface PlacementRecord {
-  /**
-   * deck.gl yaw, fed straight into getOrientation as [0, yaw, 90].
-   * Facade compass bearing = 180 - yaw.
-   */
+export interface PlacementResult {
   rotationDegrees: number;
-  /** Uniform fit factor, and the baseline for the non-uniform fallback. */
   scale: number;
+  /** Only set when proportions disagree enough that uniform scale looks undersized. */
+  scaleXYZ: [number, number, number] | null;
   /** [lat, lng, z] */
   position: [number, number, number];
   confidence: ConfidenceState;
-  scoredRotationCandidates: ScoredRotation[];
-
-  /** Everything below is added by step 08 and read by step 09. */
-  scaleMode?: "uniform" | "non-uniform";
-  /**
-   * Per-axis scale in model order (X, Y, Z). Present when the plan had to be
-   * stretched to fit the footprint — a mesh from one photograph under-guesses
-   * depth, so this is the common case, not the exception.
-   */
-  scaleXYZ?: [number, number, number];
-  scaleStretchRatio?: number;
-  flags?: PlacementFlag[];
-  collision?: {
-    neighborsChecked: number;
-    overlaps: {
-      neighborId: number | string | null;
-      overlapAreaSqM: number;
-      overlapRatio: number;
-      overlapRatioOfMesh: number;
-      overlapRatioOfNeighbor: number;
-    }[];
-    worstOverlapRatio: number;
-  };
-  ground?: { meshBaseOffsetUnits: number; z: number };
-  diagnostics?: {
-    iou: number;
-    /** The best IoU any convex mesh outline could score against this polygon. */
-    maxAchievableIou: number;
-    /** `iou / maxAchievableIou` — what the confidence check actually judges. */
-    fitQuality: number;
-    footprintAreaSqM: number;
-    placedMeshAreaSqM: number;
-    footprintPrincipalAxisDegrees: number;
-    footprintLengthMeters: number;
-    footprintWidthMeters: number;
-    meshPrincipalAxisDegrees: number;
-    meshWidthUnits: number;
-    meshDepthUnits: number;
-    meshHeightUnits: number;
-    scaledHeightMeters: number;
-    upAxis: "y" | "z";
-    headingDegrees: number;
-    /** How much better the winner scores than its own 180° flip. Near zero. */
-    rotationFlipMargin: number | null;
-    refinementShiftMeters: number;
-    footprintDerivedMismatch:
-      | { field: string; reported: number; computed: number }[]
-      | null;
-  };
+  /** Step 09 replays these as "try these alignments" buttons. */
+  scoredRotationCandidates: ScoredRotationCandidate[];
+  /** Keyed by check name, so step 09 knows which uncertainty it is showing. */
+  checks: Record<string, PlacementCheck>;
+  /** Footprint area as a share of its oriented bounding box. */
+  rectangularity: number;
+  /** Best IoU this mesh could reach at any rotation, capped by footprint shape
+   *  AND mesh area. The rotation check is scored against this, not against 1.0. */
+  achievableIou: number;
+  warnings: string[];
+  rotation_note: string;
 }
+
+/** Step 08 — the transform as persisted on a generation row. */
+export interface PlacementRecord {
+  rotationDegrees: number;
+  scale: number;
+  /** Non-uniform fit, present only when proportions disagree past 30%. */
+  scaleXYZ?: [number, number, number] | null;
+  /** [lat, lng, z] */
+  position: [number, number, number];
+  confidence: ConfidenceState;
+  scoredRotationCandidates: { rotationDegrees: number; iou: number }[];
+}
+
+/** Step 11 — one row per generation, never one per address.
+ *
+ * `id` and `created_at` are non-null: every row the store returns has both.
+ * The pre-persistence shape is `GenerationCreate` below.
+ */
+export interface Generation {
+  id: string;
+  address: string;
+  lat: number;
+  lng: number;
+  source_photo: string | null;
+  artifact: string | null;
+  placement: PlacementRecord;
+  mesh_url: string | null;
+  world_state: WorldState | null;
+  confidence_state: ConfidenceState;
+  /** Set when this row came from a step 10 propagate run. */
+  propagated_from?: string | null;
+  created_at: string;
+}
+
+/** Step 11 — POST /api/generations. Unknown top-level fields are rejected. */
+export interface GenerationCreate {
+  address: string;
+  lat: number;
+  lng: number;
+  source_photo?: string | null;
+  artifact?: string | null;
+  placement?: Partial<PlacementRecord>;
+  mesh_url?: string | null;
+  world_state?: WorldState | null;
+  confidence_state?: ConfidenceState | null;
+  propagated_from?: string | null;
+}
+
+/** Step 09 — PATCH /api/generations/{id}/correction.
+ *
+ * Only transform fields are mutable. The backend always flips the row to
+ * `manually-verified`; the client never sends that itself.
+ */
+export interface Correction {
+  rotationDegrees?: number;
+  scale?: number;
+  position?: [number, number, number];
+}
+
+/** Step 10 — POST /api/propagate. */
+export interface PropagateResponse {
+  source: Generation;
+  radius_meters: number;
+  world_state: WorldState | null;
+  /** Pre-baked rows inside the radius sharing the source's World State. */
+  revealed: Generation[];
+  /** Neighbours inside the radius with no generated row yet. */
+  pending: { lat: number; lng: number; address?: string | null }[];
+  counts: { revealed: number; pending: number; pre_baked: number };
+}
+
+/** Live, unsaved edits previewed on the map before a correction is saved. */
+export type PlacementOverrides = Partial<
+  Pick<PlacementRecord, "rotationDegrees" | "scale" | "position">
+>;
 
 /**
- * Step 04 — one World State on the Present ↔ Collapsed spectrum.
+ * Step 03 path B — a nearby street-level capture.
  *
- * Note what is absent: the prompt text. The five locked strings stay
- * server-side, so the browser has nothing to echo back.
+ * Optional convenience on top of the mandatory upload. `capturedAt` is epoch
+ * **milliseconds**, and `url` is a signed, expiring CDN link: download the bytes
+ * before persisting anything that references it.
  */
-export interface WorldStateOption {
-  id: WorldState;
-  label: string;
-  blurb: string;
-  /** 0 = nearest the present, 1 = furthest collapsed. Orders the spectrum. */
-  spectrumPosition: number;
-}
-
-export interface WorldStateListResponse {
-  states: WorldStateOption[];
-  order: WorldState[];
-  spectrum: { from: string; to: string };
-}
-
-/** What the browser sends: an enum, or the user's own words. Never a preset. */
-export interface WorldStateSelection {
-  worldState: WorldState | null;
-  /** When non-empty this REPLACES the preset — it is never appended to it. */
-  freeformOverride: string | null;
-}
-
-export interface WorldStatePrompt {
-  prompt: string;
-  source: "preset" | "override";
-  worldState: WorldState | null;
-}
-
-/** Step 03 path B — a nearby street-level capture. */
 export interface MapillaryPhoto {
   source: "mapillary";
   id: string;
   url: string;
   mimeType: string;
-  /** Epoch milliseconds, not seconds. */
   capturedAt: number | null;
   location: { lat: number; lng: number } | null;
   distanceMeters: number | null;
@@ -265,23 +281,9 @@ export interface MapillaryPhoto {
 export interface MapillaryLookup {
   attempted: boolean;
   photos: MapillaryPhoto[];
+  /** How many passes the flaky bbox index needed. */
   attempts: number;
   bbox?: string;
   /** Zero photos is the expected common case, never an error state. */
   requiresManualUpload: boolean;
-}
-
-/** Step 11 — one row per generation, never one per address. */
-export interface Generation {
-  id: string | null;
-  address: string;
-  lat: number;
-  lng: number;
-  source_photo: string | null;
-  artifact: string | null;
-  placement: PlacementRecord | null;
-  mesh_url: string | null;
-  world_state: WorldState | null;
-  confidence_state: ConfidenceState;
-  created_at: string | null;
 }

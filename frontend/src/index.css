@@ -1,45 +1,306 @@
-/* Entry pipeline (steps 01-02) additions on top of styles.css.
-   Uses the same --sn-* tokens so step 13's skin restyles both at once. */
+/* Single stylesheet for the whole app.
+   Structural rules stay token-driven; step 13's skin lives in the tokens below
+   and in the two blocks marked SKIN, so nothing else has to know about it. */
 
-.entry-form {
-  display: flex;
-  gap: 6px;
-  margin: 6px 0 8px;
+@import url("https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&display=swap");
+
+:root {
+  /* SKIN (13-ui-skin.md). Warm dark, amber and moss — the tone the World State
+     prompts describe, so the chrome and the generated imagery agree. */
+  --sn-bg: #14120f;
+  --sn-panel: #1f1c17;
+  --sn-border: #35302a;
+  --sn-text: #e8e2d4;
+  --sn-muted: #9a9284;
+  --sn-accent: #c98a3c;          /* amber: interactive + confident */
+  --sn-moss: #5c7a4f;
+  --sn-warn: #d9603b;            /* auto-low ring and badge (file 12) */
+  --sn-danger: #d9603b;
+  --sn-verified: #5c7a4f;        /* manually-verified: a human closed the loop */
+  --sn-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* Headings only. Everything else stays plainly legible — the 3D scene and the
+     before/after imagery are the centrepiece, the chrome should stay out of them. */
+  --sn-display: "Chakra Petch", ui-sans-serif, system-ui, sans-serif;
+  --sn-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
 }
 
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; margin: 0; }
+
+body {
+  background: var(--sn-bg);
+  color: var(--sn-text);
+  font-family: var(--sn-body);
+  font-size: 13px;
+}
+
+/* SKIN: amber, desaturated basemap without swapping tile providers.
+   12-map-render.md ruled out a MapTiler key; filtering the canvas costs no new
+   API surface and no new rate-limit risk. */
+.maplibregl-canvas {
+  filter: sepia(0.35) saturate(0.7) contrast(1.05) brightness(0.9);
+}
+
+h1, h2, h3, .panel h2, .panel h3 {
+  font-family: var(--sn-display);
+  letter-spacing: 0.06em;
+}
+
+.app-shell { position: relative; height: 100%; width: 100%; }
+
+/* MapLibre adds `.maplibregl-map { position: relative }` to this same element,
+   and its stylesheet is imported after this one, so an unqualified `.map-root`
+   rule loses the cascade and the map collapses to zero height while still
+   reporting full width. Qualifying by the parent wins on specificity instead
+   of depending on import order. */
+.app-shell .map-root { position: absolute; inset: 0; height: 100%; width: 100%; }
+
+/* --- floating panels --- */
+
+.panel {
+  position: absolute;
+  z-index: 10;
+  background: color-mix(in srgb, var(--sn-panel) 94%, transparent);
+  border: 1px solid var(--sn-border);
+  border-radius: 6px;
+  padding: 12px;
+  max-height: calc(100% - 32px);
+  overflow-y: auto;
+  backdrop-filter: blur(6px);
+}
+
+.panel-left  { top: 16px; left: 16px;  width: 264px; }
+.panel-right { top: 16px; right: 56px; width: 336px; }
+
+.panel h2 { font-size: 13px; margin: 0 0 8px; letter-spacing: 0.04em; }
+.panel h3 {
+  font-size: 11px; margin: 14px 0 6px; color: var(--sn-muted);
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
+.panel h3.inline-h3 { margin: 0; }
+.panel, .panel * { overflow-wrap: break-word; }
+
+.row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.row label { color: var(--sn-muted); min-width: 60px; }
+.spread { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.push-top { margin-top: 10px; }
+.push-bottom { margin-bottom: 8px; }
+
+button {
+  font-family: var(--sn-mono);
+  font-size: 12px;
+  background: #212a24;
+  color: var(--sn-text);
+  border: 1px solid var(--sn-border);
+  border-radius: 4px;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--sn-accent); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button.active { border-color: var(--sn-accent); color: var(--sn-accent); }
+button.primary { background: #1d3227; border-color: var(--sn-accent); color: var(--sn-accent); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--sn-accent); outline-offset: 1px; }
+
+input[type="range"] { flex: 1; accent-color: var(--sn-accent); padding: 0; }
+
+.btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.btn-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+.mono-sm { font-size: 11px; color: var(--sn-muted); }
+.hint { font-size: 11px; color: var(--sn-muted); line-height: 1.5; margin: 4px 0; }
+.muted { color: var(--sn-muted); }
+.error-text, .entry-error { color: var(--sn-danger); }
+.warn-text { color: var(--sn-warn); }
+.verified-text { color: var(--sn-verified); }
+
+.error-banner {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 50;
+  background: var(--sn-danger); color: #fff; padding: 8px 14px; font-size: 12px;
+}
+.inline-retry { margin-left: 12px; }
+
+/* --- confidence badges --- */
+
+.badge {
+  display: inline-block; padding: 1px 6px; border-radius: 3px;
+  font-size: 10px; letter-spacing: 0.06em; border: 1px solid transparent;
+}
+/* SKIN: three states that must read differently at a glance (13-ui-skin.md).
+   auto-high stays quiet; the other two are the ones a judge should notice. */
+.badge.auto-high { color: var(--sn-muted); border-color: var(--sn-border); }
+.badge.auto-low {
+  color: var(--sn-warn);
+  border-color: color-mix(in srgb, var(--sn-warn) 55%, transparent);
+  background: color-mix(in srgb, var(--sn-warn) 12%, transparent);
+}
+/* A human closed the loop — visually distinct from "the algorithm was right". */
+.badge.manually-verified {
+  color: var(--sn-verified);
+  border-color: color-mix(in srgb, var(--sn-verified) 60%, transparent);
+  background: color-mix(in srgb, var(--sn-verified) 14%, transparent);
+}
+
+/* --- before/after thumbnails --- */
+
+.thumbs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.thumbs figure { margin: 0; }
+.thumbs img {
+  width: 100%; height: 92px; object-fit: cover;
+  border: 1px solid var(--sn-border); border-radius: 4px; background: var(--sn-bg);
+}
+.thumbs figcaption { font-size: 10px; color: var(--sn-muted); margin-top: 3px; }
+.thumb-missing {
+  width: 100%; height: 92px; display: grid; place-items: center;
+  border: 1px dashed var(--sn-border); border-radius: 4px;
+  background: var(--sn-bg); color: var(--sn-muted); font-size: 10px;
+}
+
+/* --- history timeline / candidate lists --- */
+
+.timeline { list-style: none; margin: 0; padding: 0; }
+.timeline li {
+  padding: 5px 8px; border-left: 2px solid var(--sn-border); margin-left: 4px;
+  cursor: pointer; display: flex; justify-content: space-between;
+  gap: 8px; align-items: center;
+}
+.timeline li:hover:not(.static):not(.timeline-reality) { background: #1d241f; }
+.timeline li.current { border-left-color: var(--sn-accent); color: var(--sn-accent); }
+.timeline li.static, .timeline li.timeline-reality { cursor: default; }
+.timeline li.timeline-reality { border-left-style: dashed; }
+.timeline li > span:first-child { min-width: 0; }
+.timeline .badge { flex: 0 0 auto; white-space: nowrap; }
+.timeline.compact li { padding: 4px 6px; }
+
+.correction { outline: none; }
+
+/* --- entry pipeline (steps 01-02) --- */
+
+.entry-form { display: flex; gap: 6px; margin: 6px 0 8px; }
 .entry-form input {
-  flex: 1;
-  min-width: 0;
+  flex: 1; min-width: 0; padding: 5px 7px;
+  border: 1px solid var(--sn-border); border-radius: 4px;
+  background: var(--sn-bg); color: var(--sn-text); font: inherit;
+}
+.entry-form input:focus-visible { outline: none; border-color: var(--sn-accent); }
+
+.entry-badge {
+  display: inline-block; padding: 1px 5px; border: 1px solid currentColor;
+  border-radius: 3px; font-size: 10px; letter-spacing: 0.04em;
+}
+.entry-badge.auto-high { color: var(--sn-accent); }
+.entry-badge.auto-low { color: var(--sn-warn); }
+
+.maplibregl-ctrl-attrib { font-size: 10px; }
+
+/* --- Step 04: World State spectrum --- */
+
+.ws-spectrum-label {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 0 4px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* One row, ordered present -> collapsed, so it reads as a spectrum rather
+   than a grid of filters. */
+.ws-spectrum {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 3px;
+}
+
+.ws-spectrum button {
+  padding: 5px 2px;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.ws-field {
+  display: block;
+  margin: 10px 0;
+}
+
+.ws-field textarea,
+.ws-field input[type="file"] {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
   padding: 5px 7px;
   border: 1px solid var(--sn-border);
   border-radius: 4px;
   background: var(--sn-bg);
   color: var(--sn-text);
   font: inherit;
+  font-size: 11px;
 }
 
-.entry-form input:focus-visible {
+.ws-field textarea {
+  resize: vertical;
+}
+
+.ws-field textarea:focus-visible {
   outline: none;
   border-color: var(--sn-accent);
 }
 
-.entry-badge {
-  display: inline-block;
-  padding: 1px 5px;
-  border: 1px solid currentColor;
+.ws-result {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.ws-result figure {
+  margin: 0;
+}
+
+.ws-result img {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--sn-border);
+  border-radius: 4px;
+}
+
+/* --- Step 03 path B: street-level imagery ---------------------------------
+   Optional suggestions under the required upload. Absent entirely where there
+   is no coverage, which is most addresses. */
+
+.mapillary { margin-top: 10px; }
+
+.mapillary-grid {
+  list-style: none;
+  margin: 6px 0 4px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.mapillary-grid button {
+  display: block;
+  width: 100%;
+  padding: 2px;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.mapillary-grid button:hover:not(:disabled) { border-color: var(--sn-accent); }
+.mapillary-grid button[aria-pressed='true'] { border-color: var(--sn-accent); }
+.mapillary-grid button:disabled { opacity: 0.5; cursor: progress; }
+
+.mapillary-grid img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
   border-radius: 3px;
-  font-size: 10px;
-  letter-spacing: 0.04em;
-}
-
-.entry-badge.auto-high {
-  color: var(--sn-accent);
-}
-
-.entry-badge.auto-low {
-  color: var(--sn-warn);
-}
-
-.entry-error {
-  color: var(--sn-danger);
+  background: #000;
 }
